@@ -1,0 +1,24 @@
+fun printOut(){
+    print("correctly prints");
+    page
+        <html>
+            <body>
+                testing testing
+            </body>
+        </html>
+}
+
+fun mainPage(_) {
+    page
+        <html>
+            <body>
+                <input type="button" value="load" l:onclick="{printOut()}"/>
+            </body>
+        </html>
+}
+
+fun main() {
+    addRoute("", mainPage);
+    servePages()
+}
+main()
