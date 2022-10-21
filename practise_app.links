@@ -1,24 +1,34 @@
+module Test {
+  alien javascript "/js/device_access.js" {
+    setTitle : (String) ~%~> ();
+    alertBox : (String) ~%~> ();
+    getLocalVideo : () ~%~> ();
+  }
+}
+
 fun printOut(){
-    print("correctly prints");
-    page
-        <html>
-            <body>
-                testing testing
-            </body>
-        </html>
+
+    var video = domReplaceChildren(
+            <video id="localVideo" width="320" height="240" autoplay="true">
+            </video>
+            , getNodeById("body"));
+    Test.getLocalVideo()
 }
 
 fun mainPage(_) {
     page
         <html>
             <body>
-                <input type="button" value="load" l:onclick="{printOut()}"/>
+                <div id="body">
+                    <input type="button" value="load" l:onclick="{printOut()}"/>
+                </div>
             </body>
         </html>
 }
 
 fun main() {
     addRoute("", mainPage);
+    addStaticRoute("/js", "js", [("js", "text/javascript")]);
     servePages()
 }
 main()
