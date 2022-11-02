@@ -1,0 +1,163 @@
+open import Mvu;
+open import MvuAttrs;
+open import MvuEvents;
+open import MvuHTML;
+
+module WebRTC {
+  alien javascript "/js/webRTC_functions.js" {
+    setupRTCConnection : (wild) ~%~> ();
+    createOfferSDP : (wild) ~%~> ();
+    getOfferSDP : (wild) ~%~> (String);
+    isLocalSDP : (wild) ~%~> (Bool);
+    createAnswerSDP : (wild) ~%~> ();
+    receiveOfferSDP : (wild, String) ~%~> ();
+    isRemoteSDP : (wild) ~%~> (Bool);
+    getLocalVideo : () ~%~> ();
+  }
+}
+
+module MediaAPI {
+  alien javascript "/js/device_access.js" {
+    getLocalVideo: () ~%~> ();
+    isLocalVideo: () ~%~> (Bool);
+  }
+}
+
+fun broadcastPid(pid, currentPids) server {
+  switch (currentPids) {
+    case [] -> ()
+    case p::ps ->
+      p ! NewPidRegistered(pid);
+      p ! StartCall(pid);
+      broadcastPid(pid, ps)
+  }
+}
+
+# Runs on the server, distributes PID list
+fun connectionServer(pids) server {
+  receive {
+    case Register(newPid) ->
+      newPid ! OpenConnection();
+      broadcastPid(newPid, pids);
+      connectionServer(newPid :: pids)
+
+    case SendOffer(pid, initPid, sdp) ->
+      pid ! Offer(initPid, sdp);
+      connectionServer(pids)
+
+    case SendAnswer(initPid, pid, sdp) ->
+      initPid ! Answer(pid, sdp);
+      connectionServer(pids)
+  }
+}
+
+fun awaitLocalSDPLoop(ourpid){
+  if (WebRTC.isLocalSDP(ourpid)){
+  }
+  else{
+    awaitLocalSDPLoop(ourpid)
+  }
+}
+
+fun awaitRemoteSDPLoop(ourpid){
+  if (WebRTC.isRemoteSDP(ourpid)){
+  }
+  else{
+    awaitRemoteSDPLoop(ourpid)
+  }
+}
+
+fun awaitVideoLoop(){
+  if (MediaAPI.isLocalVideo()){
+  }
+  else{
+    awaitVideoLoop()
+  }
+}
+
+fun clientLoop(serverPid) client {
+  receive {
+    case NewPidRegistered(pid) ->
+      domReplaceChildren(
+          <#>
+          New pid
+          </#>, getNodeById("messageDisplay")
+      );
+      pid ! SendMessage("hello");
+      clientLoop(serverPid)
+    
+    case SendMessage(msg) ->
+      domReplaceChildren(<#>{stringToXml(msg)}</#>, getNodeById("messageDisplay"));
+      clientLoop(serverPid)
+
+    case OpenConnection() ->
+      var mypid = self();
+
+      WebRTC.setupRTCConnection(mypid);
+      clientLoop(serverPid)
+
+    case StartCall(pid) ->
+      var ourpid = self();
+      WebRTC.createOfferSDP(ourpid);    
+      awaitLocalSDPLoop(ourpid);
+      var myoffer = WebRTC.getOfferSDP(ourpid);
+      print(myoffer);
+      serverPid ! SendOffer(pid, ourpid, myoffer);
+      clientLoop(serverPid)
+    
+    case Offer(initPid, sdp) ->
+      var mypid = self();
+      WebRTC.receiveOfferSDP(mypid, sdp);
+      awaitRemoteSDPLoop(mypid);
+      WebRTC.createAnswerSDP(mypid);
+      awaitLocalSDPLoop(mypid);
+      var myanswer = WebRTC.getOfferSDP(mypid);
+      serverPid ! SendAnswer(initPid, mypid, myanswer);
+      clientLoop(serverPid)
+
+    case Answer(initPid, sdp) ->
+      var mypid = self();
+      WebRTC.receiveOfferSDP(mypid, sdp);
+      awaitRemoteSDPLoop(mypid);
+      print("finished");
+      print(sdp);
+      clientLoop(serverPid)
+  }
+}
+fun startClientServer(serverPid, clientPid){
+  domReplaceChildren(
+            <video id="localVideo" width="320" height="240" autoplay="true">
+            </video>
+            , getNodeById("localVideoContainer"));
+  MediaAPI.getLocalVideo();
+  awaitVideoLoop();
+  serverPid ! Register(clientPid)
+}
+
+fun mainPage(serverPid){
+
+  var clientPid = spawnClient{ clientLoop(serverPid) };
+
+  page
+    <html>
+      <body>
+        <div id="messageDisplay">
+        </div>
+        <div id="localVideoContainer">
+        <input type="button" value="load" l:onclick="{startClientServer(serverPid, clientPid)}"/>
+        </div>
+      </body>
+    </html>
+
+}
+
+
+fun main() {
+  var serverPid = spawn { connectionServer([]) };
+  addRoute("/", fun(_) {mainPage(serverPid)});
+  addStaticRoute("/js", "js", [("js", "text/javascript")]);
+  serveWebsockets();
+  servePages()
+}
+
+main()

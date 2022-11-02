@@ -1,0 +1,74 @@
+open import Mvu;
+open import MvuAttrs;
+open import MvuEvents;
+open import MvuHTML;
+
+module Test {
+  alien javascript "/js/basic_functions.js" {
+    setTitle : (String) ~%~> ();
+    alertBox : (String) ~%~> ();
+    getLocalVideo : () ~%~> ();
+  }
+}
+
+fun broadcastPid(pid, currentPids) server {
+  switch (currentPids) {
+    case [] -> ()
+    case p::ps ->
+      p ! NewPidRegistered(pid);
+      broadcastPid(pid, ps)
+  }
+}
+
+# Runs on the server, distributes PID list
+fun connectionServer(pids) server {
+  receive {
+    case Register(newPid) ->
+      broadcastPid(newPid, pids);
+      connectionServer(newPid :: pids)
+  }
+}
+
+fun clientLoop() client {
+  receive {
+    case NewPidRegistered(pid) ->
+      domReplaceChildren(
+          <#>
+          New pid
+          </#>, getNodeById("messageDisplay")
+      );
+      pid ! SendMessage("hello");
+      clientLoop()
+    
+    case SendMessage(msg) ->
+      domReplaceChildren(<#>{stringToXml(msg)}</#>, getNodeById("messageDisplay"));
+      clientLoop()   
+  }
+}
+
+fun mainPage(serverPid){
+
+  var clientPid = spawnClient{ clientLoop() };
+
+  serverPid ! Register(clientPid);
+
+  page
+    <html>
+      <body>
+        <div id="messageDisplay">
+        </div>
+      </body>
+    </html>
+
+}
+
+
+fun main() {
+  var serverPid = spawn { connectionServer([]) };
+  addRoute("/", fun(_) {mainPage(serverPid)});
+  addStaticRoute("/js", "js", [("js", "text/javascript")]);
+  serveWebsockets();
+  servePages()
+}
+
+main()
