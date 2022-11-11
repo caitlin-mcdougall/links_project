@@ -31,9 +31,10 @@ function _setupRTCConnection(pid){
     console.log("setting up RTC Connection");
     connection = new RTCPeerConnection(peerConnectionConfig);
     connection.onicecandidate = newIceCandidate;
-    connection.ontrack = newRemoteStream;
+    connection.onaddstream = newRemoteStream;
     // getLocalVideo();
     var localvideo = document.getElementById("localVideo");
+    console.log(localvideo.srcObject)
     connection.addStream(localvideo.srcObject);
     peerConnection = {
         connection: connection,
@@ -49,9 +50,14 @@ function newIceCandidate(event){
 }
 
 function newRemoteStream(event){
-    if(event){
+    if(!event){
+        return null
+    }
+    else{
+        console.log("event = ", event.stream);
         remotevideo = document.getElementById("remoteVideo");
-        remotevideo.srcObject = event.stream
+        remotevideo.srcObject = event.stream;
+        console.log(event.stream);
     }
     return
 }

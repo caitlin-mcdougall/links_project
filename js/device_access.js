@@ -13,9 +13,9 @@ function _getLocalVideo(){
     console.log("before streaming")
     /* Stream it to video element */
     navigator.mediaDevices.getUserMedia(constraints).then(function success(stream) {
-      videoStream = true;
       video.srcObject = stream;
       console.log("should be streaming");
+      videoStream = true;
     });
 
 }

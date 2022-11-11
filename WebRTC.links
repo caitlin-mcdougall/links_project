@@ -77,6 +77,21 @@ fun awaitVideoLoop(){
 
 fun clientLoop(serverPid) client {
   receive {
+    case StartRegistration() ->
+      var mypid = self();
+      domReplaceChildren(
+          <#>
+          <video id="localVideo" width="320" height="240" autoplay="true">
+          </video>
+          <video id="remoteVideo" width="320" height="240" autoplay="true">
+          </video>
+          </#>
+          , getNodeById("localVideoContainer"));
+      MediaAPI.getLocalVideo();
+      awaitVideoLoop();
+      serverPid ! Register(mypid);
+      clientLoop(serverPid)
+
     case NewPidRegistered(pid) ->
       domReplaceChildren(
           <#>
@@ -144,7 +159,7 @@ fun mainPage(serverPid){
         <div id="messageDisplay">
         </div>
         <div id="localVideoContainer">
-        <input type="button" value="load" l:onclick="{startClientServer(serverPid, clientPid)}"/>
+        <input type="button" value="load" l:onclick="{clientPid ! StartRegistration()}"/>
         </div>
       </body>
     </html>
