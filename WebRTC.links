@@ -13,13 +13,10 @@ module WebRTC {
     receiveOfferSDP : (wild, String) ~%~> ();
     isRemoteSDP : (wild) ~%~> (Bool);
     getLocalVideo : () ~%~> ();
-  }
-}
-
-module MediaAPI {
-  alien javascript "/js/device_access.js" {
-    getLocalVideo: () ~%~> ();
-    isLocalVideo: () ~%~> (Bool);
+    isLocalVideo : () ~%~> (Bool);
+    getIsNewIceCandidate : (wild) ~%~> (Bool);
+    getNewIceCandidates : (wild) ~%~> (String);
+    addNewIceCandidates : (wild, String) ~%~> ();
   }
 }
 
@@ -27,6 +24,7 @@ fun broadcastPid(pid, currentPids) server {
   switch (currentPids) {
     case [] -> ()
     case p::ps ->
+      p ! OpenConnection(pid);
       p ! NewPidRegistered(pid);
       p ! StartCall(pid);
       broadcastPid(pid, ps)
@@ -37,16 +35,20 @@ fun broadcastPid(pid, currentPids) server {
 fun connectionServer(pids) server {
   receive {
     case Register(newPid) ->
-      newPid ! OpenConnection();
       broadcastPid(newPid, pids);
       connectionServer(newPid :: pids)
 
     case SendOffer(pid, initPid, sdp) ->
+      pid ! OpenConnection(initPid);
       pid ! Offer(initPid, sdp);
       connectionServer(pids)
 
     case SendAnswer(initPid, pid, sdp) ->
       initPid ! Answer(pid, sdp);
+      connectionServer(pids)
+    
+    case SendIceCandidates(initPid, pid, candidates) ->
+      pid ! NewIceCandidates(initPid, candidates);
       connectionServer(pids)
   }
 }
@@ -68,11 +70,22 @@ fun awaitRemoteSDPLoop(ourpid){
 }
 
 fun awaitVideoLoop(){
-  if (MediaAPI.isLocalVideo()){
+  if (WebRTC.isLocalVideo()){
   }
   else{
     awaitVideoLoop()
   }
+}
+
+fun getNewIceCandidates(mypid, serverPid, pid){
+  if (WebRTC.getIsNewIceCandidate(pid)){
+    var candidates = WebRTC.getNewIceCandidates(pid);
+    serverPid ! SendIceCandidates(mypid, pid, candidates);
+    print("problem is here");
+    getNewIceCandidates(mypid, serverPid, pid)
+  }
+  else{getNewIceCandidates(mypid, serverPid, pid)}
+  
 }
 
 fun clientLoop(serverPid) client {
@@ -83,11 +96,11 @@ fun clientLoop(serverPid) client {
           <#>
           <video id="localVideo" width="320" height="240" autoplay="true">
           </video>
-          <video id="remoteVideo" width="320" height="240" autoplay="true">
-          </video>
+          <div id="remoteVideo">
+          </div>
           </#>
           , getNodeById("localVideoContainer"));
-      MediaAPI.getLocalVideo();
+      WebRTC.getLocalVideo();
       awaitVideoLoop();
       serverPid ! Register(mypid);
       clientLoop(serverPid)
@@ -105,10 +118,11 @@ fun clientLoop(serverPid) client {
       domReplaceChildren(<#>{stringToXml(msg)}</#>, getNodeById("messageDisplay"));
       clientLoop(serverPid)
 
-    case OpenConnection() ->
+    case OpenConnection(withPid) ->
       var mypid = self();
 
-      WebRTC.setupRTCConnection(mypid);
+      WebRTC.setupRTCConnection(withPid);
+      var iceLoop = spawnClient{getNewIceCandidates(mypid, serverPid, withPid)};
       clientLoop(serverPid)
 
     case StartCall(pid) ->
@@ -137,6 +151,10 @@ fun clientLoop(serverPid) client {
       print("finished");
       print(sdp);
       clientLoop(serverPid)
+
+    case NewIceCandidates(pid, candidates) ->
+      WebRTC.addNewIceCandidates(pid, candidates);
+      clientLoop(serverPid)
   }
 }
 fun startClientServer(serverPid, clientPid){
@@ -144,7 +162,7 @@ fun startClientServer(serverPid, clientPid){
             <video id="localVideo" width="320" height="240" autoplay="true">
             </video>
             , getNodeById("localVideoContainer"));
-  MediaAPI.getLocalVideo();
+  WebRTC.getLocalVideo();
   awaitVideoLoop();
   serverPid ! Register(clientPid)
 }
