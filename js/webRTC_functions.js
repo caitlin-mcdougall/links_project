@@ -47,24 +47,28 @@ function _setupRTCConnection(pid){
     var localvideo = document.getElementById("localVideo");
     console.log(localvideo.srcObject)
     connection.addStream(localvideo.srcObject);
-    peerConnection = {
+    peerConn = {
         connection: connection,
-        iceCandidates: peerConnectionConfig.iceServers,
+        iceCandidates: [],
         isNewIceCandidate: false
     };
-    peerConnections[pid] = peerConnection;
+    console.log("setting up rtc connection")
+    console.log(pid)
+    peerConnections[pid._clientPid] = peerConn;
 }
 
 function newIceCandidate(event, pid){
+    console.log("new ice candidate")
+    console.log(pid)
     if(event.candidate != null){
         // console.log(event.candidate)
-        peerConnections[pid].iceCandidates.push(event.candidate);
-        peerConnections[pid].isNewIceCandidate = true;
+        peerConnections[pid._clientPid].iceCandidates.push(event.candidate);
+        peerConnections[pid._clientPid].isNewIceCandidate = true;
     };
 }
 
 function _getIsNewIceCandidate(pid){
-    isCandidate = peerConnections[pid].isNewIceCandidate;
+    isCandidate = peerConnections[pid._clientPid].isNewIceCandidate;
     return isCandidate;
 }
 
@@ -73,11 +77,11 @@ function newRemoteTrack(event){
         return null
     }
     else{
-        console.log("event = ", event);
+        // console.log("event = ", event);
         remotevideo = document.getElementById("remoteVideo");
         remoteStream = new MediaStream();
         remoteStream.addTrack(event.track);
-        console.log(remoteStream)
+        // console.log(remoteStream)
         newVid = document.createElement("video")
         newVid.setAttribute('object-fit', 'cover');
         newVid.setAttribute('width', '320px');
@@ -91,52 +95,67 @@ function newRemoteTrack(event){
 }
 
 function _getNewIceCandidates(pid){
-    candidates = peerConnections[pid].iceCandidates.pop(0);
+    console.log("getting ice candidates")
+    console.log(pid)
+    candidates = peerConnections[pid._clientPid].iceCandidates.pop(0);
+    if (peerConnections[pid._clientPid].iceCandidates.length == 0){
+        peerConnections[pid._clientPid].isNewIceCandidate = false
+    }
     return candidates;
 }
 
 function _addNewIceCandidates(pid, candidate){
-    console.log(candidate)
+    console.log("adding new ice candidate")
+    console.log(pid)
+    console.log(Object.keys(peerConnections))
+    console.log(peerConnections[pid._clientPid].connection)
     iceCandidate = new RTCIceCandidate(candidate)
-    console.log(peerConnections[pid])
-    peerConnections[pid].connection.addIceCandidate(iceCandidate)
+    peerConnections[pid._clientPid].connection.addIceCandidate(iceCandidate)
+    console.log("finished adding ice candidate")
 }
 
 function _createOfferSDP(pid){
-    peerConnections[pid].connection.createOffer( 
+    peerConnections[pid._clientPid].connection.createOffer( 
         {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true }
         ).then( function (offer){
-            peerConnections[pid].connection.setLocalDescription(offer)}
+            peerConnections[pid._clientPid].connection.setLocalDescription(offer)}
         );
 }
 
 function _getOfferSDP(pid){
-    return peerConnections[pid].connection.localDescription;
+    return peerConnections[pid._clientPid].connection.localDescription;
 }
 
 function _isLocalSDP(pid){
-    return !(!peerConnections[pid].connection.localDescription);
+    console.log("++++++++++++++++++")
+    console.log(peerConnections)
+    console.log(pid._clientPid)
+    return !(!peerConnections[pid._clientPid].connection.localDescription);
 }
 function _isRemoteSDP(pid){
-    return !(!peerConnections[pid].connection.remoteDescription);
+    console.log("__________________")
+    console.log(peerConnections)
+    console.log(pid._clientPid)
+    return !(!peerConnections[pid._clientPid].connection.remoteDescription);
 }
 
 function _receiveOfferSDP(pid, offer){
+    console.log("receiving offer")
     console.log(pid);
-    console.log(Object.keys(peerConnections))
+    // console.log(Object.keys(peerConnections))
     if (offer.type == "offer"){
-        peerConnections[pid].connection.setRemoteDescription(new RTCSessionDescription(offer));
+        peerConnections[pid._clientPid].connection.setRemoteDescription(new RTCSessionDescription(offer));
     }
     else{
-        peerConnections[pid].connection.setRemoteDescription(new RTCSessionDescription(offer));
+        peerConnections[pid._clientPid].connection.setRemoteDescription(new RTCSessionDescription(offer));
     }
 }
 
 function _createAnswerSDP(pid){
-    peerConnections[pid].connection.createAnswer(
+    peerConnections[pid._clientPid].connection.createAnswer(
         { 'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true }
         ).then( function (sessionDescription) {
-        peerConnections[pid].connection.setLocalDescription(sessionDescription);  
+        peerConnections[pid._clientPid].connection.setLocalDescription(sessionDescription);  
     });
 }
 

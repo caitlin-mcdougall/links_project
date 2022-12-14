@@ -79,6 +79,7 @@ fun awaitVideoLoop(){
 
 fun getNewIceCandidates(mypid, serverPid, pid){
   if (WebRTC.getIsNewIceCandidate(pid)){
+    print("is new ice candidate true");
     var candidates = WebRTC.getNewIceCandidates(pid);
     serverPid ! SendIceCandidates(mypid, pid, candidates);
     print("problem is here");
@@ -102,6 +103,7 @@ fun clientLoop(serverPid) client {
           , getNodeById("localVideoContainer"));
       WebRTC.getLocalVideo();
       awaitVideoLoop();
+      print("finished waiting");
       serverPid ! Register(mypid);
       clientLoop(serverPid)
 
@@ -120,34 +122,37 @@ fun clientLoop(serverPid) client {
 
     case OpenConnection(withPid) ->
       var mypid = self();
-
+      print("setting up new connection");
       WebRTC.setupRTCConnection(withPid);
-      var iceLoop = spawnClient{getNewIceCandidates(mypid, serverPid, withPid)};
       clientLoop(serverPid)
 
     case StartCall(pid) ->
       var ourpid = self();
-      WebRTC.createOfferSDP(ourpid);    
-      awaitLocalSDPLoop(ourpid);
-      var myoffer = WebRTC.getOfferSDP(ourpid);
+      WebRTC.createOfferSDP(pid);    
+      awaitLocalSDPLoop(pid);
+      var myoffer = WebRTC.getOfferSDP(pid);
       print(myoffer);
       serverPid ! SendOffer(pid, ourpid, myoffer);
       clientLoop(serverPid)
     
     case Offer(initPid, sdp) ->
+      print("receiving offer");
       var mypid = self();
-      WebRTC.receiveOfferSDP(mypid, sdp);
-      awaitRemoteSDPLoop(mypid);
-      WebRTC.createAnswerSDP(mypid);
-      awaitLocalSDPLoop(mypid);
-      var myanswer = WebRTC.getOfferSDP(mypid);
+      WebRTC.receiveOfferSDP(initPid, sdp);
+      awaitRemoteSDPLoop(initPid);
+      var iceLoop = spawnClient{getNewIceCandidates(mypid, serverPid, initPid)};
+      WebRTC.createAnswerSDP(initPid);
+      awaitLocalSDPLoop(initPid);
+      var myanswer = WebRTC.getOfferSDP(initPid);
       serverPid ! SendAnswer(initPid, mypid, myanswer);
       clientLoop(serverPid)
 
     case Answer(initPid, sdp) ->
+      print("receiving answer");
       var mypid = self();
-      WebRTC.receiveOfferSDP(mypid, sdp);
-      awaitRemoteSDPLoop(mypid);
+      WebRTC.receiveOfferSDP(initPid, sdp);
+      awaitRemoteSDPLoop(initPid);
+      var iceLoop = spawnClient{getNewIceCandidates(mypid, serverPid, initPid)};
       print("finished");
       print(sdp);
       clientLoop(serverPid)
