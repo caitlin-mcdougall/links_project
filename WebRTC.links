@@ -1,7 +1,10 @@
 open import Mvu;
+open import MvuHTML;
 open import MvuAttrs;
 open import MvuEvents;
-open import MvuHTML;
+open import MvuSubscriptions;
+import MvuCommands;
+
 
 module WebRTC {
   alien javascript "/js/webRTC_functions.js" {
@@ -160,25 +163,80 @@ fun clientLoop(serverPid) client {
     case NewIceCandidates(pid, candidates) ->
       WebRTC.addNewIceCandidates(pid, candidates);
       clientLoop(serverPid)
-  }
 }
-fun startClientServer(serverPid, clientPid){
-  domReplaceChildren(
-            <video id="localVideo" width="320" height="240" autoplay="true">
-            </video>
-            , getNodeById("localVideoContainer"));
-  WebRTC.getLocalVideo();
-  awaitVideoLoop();
-  serverPid ! Register(clientPid)
 }
+
+typename Model = (myPosition: (pid: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xpos: Float, ypos: Float)]);
+typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | OtherMoved: (pid: String, pos: (xpos: Float, ypos: Float)) |];
+
+sig updt : (Msg, Model) ~> Model
+fun updt(msg, model){
+  switch(msg) {
+    case SetPid(mypid) ->
+      (myPosition= (pid=mypid, xpos=model.myPosition.xpos, ypos=model.myPosition.ypos), othersPositions= model.othersPositions)
+    case UpdateEvent(evt) -> 
+        var mypid = model.myPosition.pid;
+        var code = intToString(evt.code);
+        switch(code){
+            case "ArrowDown" -> 
+              var newPos =  (pid = model.myPosition.pid, xpos = model.myPosition.xpos +. 2.5,ypos =  model.myPosition.ypos);
+              (myPosition = newPos, othersPositions = model.othersPositions)
+            case "ArrowUp" ->
+              var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos -. 2.5, ypos = model.myPosition.ypos);
+              (myPosition = newPos, othersPositions = model.othersPositions)
+            case "ArrowLeft" -> 
+              var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos -. 2.5);
+              (myPosition = newPos, othersPositions = model.othersPositions)
+            case "ArrowRight" ->
+              var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos +. 2.5);
+              (myPosition = newPos, othersPositions = model.othersPositions)
+            case other ->
+              var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos);
+              (myPosition = newPos, othersPositions = model.othersPositions)
+        }
+    case OtherMoved(pos) ->
+      model
+}
+}
+
+fun textPar((k, v)) {
+  p(MvuAttrs.empty, textNode(k ^^ ": " ^^ v))
+}
+
+fun i2s(i) { intToString(i) }
+fun b2s(b) { if(b) { "true" } else { "false"} }
+
+sig view : (Model) ~> HTML(Msg)
+fun view(model) {
+    var props = MvuHTML.concat(map(textPar,
+    [
+    ("x position", floatToString(model.myPosition.xpos)),
+    ("y position", floatToString(model.myPosition.ypos))
+    ]));
+    div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px;"), props)
+    
+    
+}
+
+sig subscriptions : (Model) -> Sub(Msg)
+fun subscriptions(_) {
+  onKeyDown(fun(evt) { UpdateEvent(evt) })
+}
+
 
 fun mainPage(serverPid){
-
+  run("placeholder", (myPosition=(pid="None", xpos=1.0, ypos=2.0), othersPositions=[]), view,
+      fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
+      MvuCommands.empty);
   var clientPid = spawnClient{ clientLoop(serverPid) };
-
   page
     <html>
+      <head>
+        <title>Links - Subscriptions</title>
+      </head>
       <body>
+        <div id="placeholder">
+        </div>
         <div id="messageDisplay">
         </div>
         <div id="localVideoContainer">

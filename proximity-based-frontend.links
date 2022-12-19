@@ -1,0 +1,74 @@
+open import Mvu;
+open import MvuHTML;
+open import MvuAttrs;
+open import MvuEvents;
+open import MvuSubscriptions;
+import MvuCommands;
+
+typename Model = (myPosition: (xpos: Float, ypos: Float), othersPositions: [(xpos: Float, ypos: Float)]);
+typename Msg = [| UpdateEvent: KeyboardEvent |];
+
+sig updt : (Msg, Model) ~> Model
+fun updt(msg, model) {
+  switch(msg) {
+    case UpdateEvent(evt) -> 
+        var code = intToString(evt.code);
+        switch(code){
+            case "ArrowDown" -> 
+                (myPosition = (xpos = model.myPosition.xpos +. 2.5,ypos =  model.myPosition.ypos) , othersPositions= model.othersPositions)
+            case "ArrowUp" ->
+                (myPosition = (xpos = model.myPosition.xpos -. 2.5, ypos = model.myPosition.ypos) , othersPositions= model.othersPositions)
+            case "ArrowLeft" -> 
+                (myPosition = (xpos = model.myPosition.xpos, ypos = model.myPosition.ypos -. 2.5) , othersPositions= model.othersPositions)
+            case "ArrowRight" ->
+                (myPosition = (xpos = model.myPosition.xpos, ypos = model.myPosition.ypos +. 2.5) , othersPositions= model.othersPositions)
+            case other ->
+                (myPosition = (xpos = model.myPosition.xpos, ypos = model.myPosition.ypos) , othersPositions= model.othersPositions)
+        }
+  }
+}
+
+fun textPar((k, v)) {
+  p(MvuAttrs.empty, textNode(k ^^ ": " ^^ v))
+}
+
+fun i2s(i) { intToString(i) }
+fun b2s(b) { if(b) { "true" } else { "false"} }
+
+sig view : (Model) ~> HTML(Msg)
+fun view(model) {
+    var props = MvuHTML.concat(map(textPar,
+    [
+    ("x position", floatToString(model.myPosition.xpos)),
+    ("y position", floatToString(model.myPosition.ypos))
+    ]));
+    div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px;"), props)
+    
+}
+
+sig subscriptions : (Model) -> Sub(Msg)
+fun subscriptions(_) {
+  onKeyDown(fun(evt) { UpdateEvent(evt) })
+}
+
+fun mainPage(_) {
+  run("placeholder", (myPosition=(xpos=1.0, ypos=2.0), othersPositions=[]), view,
+      fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
+      MvuCommands.empty);
+  page
+  <html>
+    <head>
+      <title>Links - Subscriptions</title>
+    </head>
+    <body>
+      <div id="placeholder"></div>
+    </body>
+  </html>
+}
+
+fun main() {
+  addRoute("/", mainPage);
+  servePages()
+}
+
+main()
