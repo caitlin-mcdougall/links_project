@@ -27,10 +27,25 @@ fun broadcastPid(pid, currentPids) server {
   switch (currentPids) {
     case [] -> ()
     case p::ps ->
-      p ! OpenConnection(pid);
-      p ! NewPidRegistered(pid);
-      p ! StartCall(pid);
+      var proc = first(p);
+      proc ! OpenConnection(pid);
+      proc ! NewPidRegistered(pid);
+      proc ! StartCall(pid);
       broadcastPid(pid, ps)
+  }
+}
+
+fun broadcastCharacterMovement(pids, pos) server {
+  switch(pids){
+    case [] -> ()
+    case p::ps ->
+      if(second(p) == pos.pid){
+        broadcastCharacterMovement(ps, pos)
+      }else{
+        var proc = first(p);
+        proc ! OtherMoved(pos);
+        broadcastCharacterMovement(ps, pos)
+      }  
   }
 }
 
@@ -39,7 +54,11 @@ fun connectionServer(pids) server {
   receive {
     case Register(newPid) ->
       broadcastPid(newPid, pids);
-      connectionServer(newPid :: pids)
+      var id = intToString(length(pids));
+      newPid ! SetMyId(id);
+      var newpids = (newPid, id) :: pids;
+      # newPid ! SetMyId(id);
+      connectionServer(newpids)
 
     case SendOffer(pid, initPid, sdp) ->
       pid ! OpenConnection(initPid);
@@ -53,8 +72,14 @@ fun connectionServer(pids) server {
     case SendIceCandidates(initPid, pid, candidates) ->
       pid ! NewIceCandidates(initPid, candidates);
       connectionServer(pids)
+    
+    case CharacterMoved(pos) ->
+      broadcastCharacterMovement(pids, pos);
+      connectionServer(pids)
   }
 }
+
+var serverPid = spawn { connectionServer([]) };
 
 fun awaitLocalSDPLoop(ourpid){
   if (WebRTC.isLocalSDP(ourpid)){
@@ -85,14 +110,13 @@ fun getNewIceCandidates(mypid, serverPid, pid){
     print("is new ice candidate true");
     var candidates = WebRTC.getNewIceCandidates(pid);
     serverPid ! SendIceCandidates(mypid, pid, candidates);
-    print("problem is here");
     getNewIceCandidates(mypid, serverPid, pid)
   }
   else{getNewIceCandidates(mypid, serverPid, pid)}
   
 }
 
-fun clientLoop(serverPid) client {
+fun clientLoop(handler) client {
   receive {
     case StartRegistration() ->
       var mypid = self();
@@ -108,7 +132,12 @@ fun clientLoop(serverPid) client {
       awaitVideoLoop();
       print("finished waiting");
       serverPid ! Register(mypid);
-      clientLoop(serverPid)
+      clientLoop(handler)
+
+    case SetMyId(id) ->
+      dispatch(SetPid(id), handler);
+      clientLoop(handler)
+      
 
     case NewPidRegistered(pid) ->
       domReplaceChildren(
@@ -117,17 +146,17 @@ fun clientLoop(serverPid) client {
           </#>, getNodeById("messageDisplay")
       );
       pid ! SendMessage("hello");
-      clientLoop(serverPid)
+      clientLoop(handler)
     
     case SendMessage(msg) ->
       domReplaceChildren(<#>{stringToXml(msg)}</#>, getNodeById("messageDisplay"));
-      clientLoop(serverPid)
+      clientLoop(handler)
 
     case OpenConnection(withPid) ->
       var mypid = self();
       print("setting up new connection");
       WebRTC.setupRTCConnection(withPid);
-      clientLoop(serverPid)
+      clientLoop(handler)
 
     case StartCall(pid) ->
       var ourpid = self();
@@ -136,7 +165,7 @@ fun clientLoop(serverPid) client {
       var myoffer = WebRTC.getOfferSDP(pid);
       print(myoffer);
       serverPid ! SendOffer(pid, ourpid, myoffer);
-      clientLoop(serverPid)
+      clientLoop(handler)
     
     case Offer(initPid, sdp) ->
       print("receiving offer");
@@ -148,7 +177,7 @@ fun clientLoop(serverPid) client {
       awaitLocalSDPLoop(initPid);
       var myanswer = WebRTC.getOfferSDP(initPid);
       serverPid ! SendAnswer(initPid, mypid, myanswer);
-      clientLoop(serverPid)
+      clientLoop(handler)
 
     case Answer(initPid, sdp) ->
       print("receiving answer");
@@ -158,21 +187,40 @@ fun clientLoop(serverPid) client {
       var iceLoop = spawnClient{getNewIceCandidates(mypid, serverPid, initPid)};
       print("finished");
       print(sdp);
-      clientLoop(serverPid)
+      clientLoop(handler)
 
     case NewIceCandidates(pid, candidates) ->
       WebRTC.addNewIceCandidates(pid, candidates);
-      clientLoop(serverPid)
+      clientLoop(handler)
+    
+    case OtherMoved(pos) ->
+      dispatch(OtherMoved(pos), handler);
+      clientLoop(handler)
 }
 }
 
+fun updateOthersPositions(currentArray, newarray, pos){
+  switch(currentArray){
+    case [] -> pos::newarray
+    case p::ps ->
+      if (p.pid == pos.pid){
+        newarray ++ [pos] ++ ps
+      }
+      else{
+        updateOthersPositions(ps,p::newarray, pos)
+      }
+      
+  }
+}
+
 typename Model = (myPosition: (pid: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xpos: Float, ypos: Float)]);
-typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | OtherMoved: (pid: String, pos: (xpos: Float, ypos: Float)) |];
+typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | OtherMoved: (pid: String, xpos: Float, ypos: Float) |];
 
 sig updt : (Msg, Model) ~> Model
 fun updt(msg, model){
   switch(msg) {
     case SetPid(mypid) ->
+      print("I am "^^mypid);
       (myPosition= (pid=mypid, xpos=model.myPosition.xpos, ypos=model.myPosition.ypos), othersPositions= model.othersPositions)
     case UpdateEvent(evt) -> 
         var mypid = model.myPosition.pid;
@@ -180,22 +228,28 @@ fun updt(msg, model){
         switch(code){
             case "ArrowDown" -> 
               var newPos =  (pid = model.myPosition.pid, xpos = model.myPosition.xpos +. 2.5,ypos =  model.myPosition.ypos);
+              serverPid ! CharacterMoved(newPos);
               (myPosition = newPos, othersPositions = model.othersPositions)
             case "ArrowUp" ->
               var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos -. 2.5, ypos = model.myPosition.ypos);
+              serverPid ! CharacterMoved(newPos);
               (myPosition = newPos, othersPositions = model.othersPositions)
             case "ArrowLeft" -> 
               var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos -. 2.5);
+              serverPid ! CharacterMoved(newPos);
               (myPosition = newPos, othersPositions = model.othersPositions)
             case "ArrowRight" ->
               var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos +. 2.5);
+              serverPid ! CharacterMoved(newPos);
               (myPosition = newPos, othersPositions = model.othersPositions)
             case other ->
               var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos);
+              serverPid ! CharacterMoved(newPos);
               (myPosition = newPos, othersPositions = model.othersPositions)
         }
     case OtherMoved(pos) ->
-      model
+      var newPositions = updateOthersPositions(model.othersPositions, [], pos);
+      (myPosition = model.myPosition, othersPositions = newPositions)
 }
 }
 
@@ -206,6 +260,20 @@ fun textPar((k, v)) {
 fun i2s(i) { intToString(i) }
 fun b2s(b) { if(b) { "true" } else { "false"} }
 
+fun getOtherHTML(positions, htmlList) {
+  switch(positions){
+    case [] -> htmlList
+    case p::ps -> 
+      var props = MvuHTML.concat(map(textPar,
+      [
+      ("x position", floatToString(p.xpos)),
+      ("y position", floatToString(p.ypos))
+      ]));
+      getOtherHTML(ps, htmlList ++ [div(style("position:absolute;top:"^^ floatToString(p.xpos)^^"px; left:"^^ floatToString(p.ypos)^^ "px; border-style: dotted;"), props )])
+  }
+}
+
+
 sig view : (Model) ~> HTML(Msg)
 fun view(model) {
     var props = MvuHTML.concat(map(textPar,
@@ -213,7 +281,7 @@ fun view(model) {
     ("x position", floatToString(model.myPosition.xpos)),
     ("y position", floatToString(model.myPosition.ypos))
     ]));
-    div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px;"), props)
+    MvuHTML.concat([MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px;"), props)])
     
     
 }
@@ -223,12 +291,15 @@ fun subscriptions(_) {
   onKeyDown(fun(evt) { UpdateEvent(evt) })
 }
 
-
-fun mainPage(serverPid){
-  run("placeholder", (myPosition=(pid="None", xpos=1.0, ypos=2.0), othersPositions=[]), view,
+fun clientStart(){
+  var handler = runHandle("placeholder", (myPosition=(pid="None", xpos=50.0, ypos=50.0), othersPositions=[]), view,
       fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
       MvuCommands.empty);
-  var clientPid = spawnClient{ clientLoop(serverPid) };
+  clientLoop(handler)
+}
+
+fun mainPage(serverPid){
+  var clientPid = spawnClient{ clientStart() };
   page
     <html>
       <head>
@@ -249,7 +320,7 @@ fun mainPage(serverPid){
 
 
 fun main() {
-  var serverPid = spawn { connectionServer([]) };
+
   addRoute("/", fun(_) {mainPage(serverPid)});
   addStaticRoute("/js", "js", [("js", "text/javascript")]);
   serveWebsockets();

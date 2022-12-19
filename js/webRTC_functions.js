@@ -106,9 +106,9 @@ function _getNewIceCandidates(pid){
 
 function _addNewIceCandidates(pid, candidate){
     console.log("adding new ice candidate")
-    console.log(pid)
-    console.log(Object.keys(peerConnections))
-    console.log(peerConnections[pid._clientPid].connection)
+    // console.log(pid)
+    // console.log(Object.keys(peerConnections))
+    // console.log(peerConnections[pid._clientPid].connection)
     iceCandidate = new RTCIceCandidate(candidate)
     peerConnections[pid._clientPid].connection.addIceCandidate(iceCandidate)
     console.log("finished adding ice candidate")
@@ -127,15 +127,15 @@ function _getOfferSDP(pid){
 }
 
 function _isLocalSDP(pid){
-    console.log("++++++++++++++++++")
-    console.log(peerConnections)
-    console.log(pid._clientPid)
+    // console.log("++++++++++++++++++")
+    // console.log(peerConnections)
+    // console.log(pid._clientPid)
     return !(!peerConnections[pid._clientPid].connection.localDescription);
 }
 function _isRemoteSDP(pid){
-    console.log("__________________")
-    console.log(peerConnections)
-    console.log(pid._clientPid)
+    // console.log("__________________")
+    // console.log(peerConnections)
+    // console.log(pid._clientPid)
     return !(!peerConnections[pid._clientPid].connection.remoteDescription);
 }
 
