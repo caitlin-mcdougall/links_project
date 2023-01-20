@@ -1,10 +1,7 @@
 open import Mvu;
-open import MvuHTML;
 open import MvuAttrs;
 open import MvuEvents;
-open import MvuSubscriptions;
-import MvuCommands;
-
+open import MvuHTML;
 
 module WebRTC {
   alien javascript "/js/webRTC_functions.js" {
@@ -17,216 +14,44 @@ module WebRTC {
     isRemoteSDP : (wild) ~%~> (Bool);
     getLocalVideo : () ~%~> ();
     isLocalVideo : () ~%~> (Bool);
-    getIsNewIceCandidate : (wild) ~%~> (String);
+    getIsNewIceCandidate : (wild) ~%~> (Bool);
     getNewIceCandidates : (wild) ~%~> (String);
     addNewIceCandidates : (wild, String) ~%~> ();
-    closeRTCConnection : (wild) ~%~> ();
   }
 }
 
-var startxind = 5;
-var startyind = 5;
-
-fun broadcastPid(pid, id, currentPids, newroom, oldroom) server {
+fun broadcastPid(pid, currentPids) server {
   switch (currentPids) {
     case [] -> ()
     case p::ps ->
-      var proc = first(p);
-      if (second(p) == id){
-        broadcastPid(pid, id, ps, newroom, oldroom)
-      }
-      else{
-        if (third(p) == newroom){
-          print("same room");
-          print(newroom);
-          proc ! OpenConnection(pid);
-          proc ! NewPidRegistered(pid);
-          proc ! StartCall(pid);
-          broadcastPid(pid, id, ps, newroom, oldroom)
-        }
-        else{
-          if (third(p) == oldroom){
-            print("different rooms");
-            print(oldroom);
-            proc ! CloseConnection(pid);
-            pid ! CloseConnection(proc);
-            broadcastPid(pid, id, ps, newroom, oldroom)
-          }else{
-            broadcastPid(pid, id, ps, newroom, oldroom)
-          }
-        }
-      }
-      
-  }
-}
-
-fun broadcastCharacterMovement(pids, pos) server {
-  switch(pids){
-    case [] -> 
-      ()
-    case p::ps ->
-      var proc = first(p);
-      if(second(p) == pos.pid){
-        proc ! Move(pos);
-        broadcastCharacterMovement(ps, pos)
-      }else{
-        proc ! OtherMoved(pos);
-        broadcastCharacterMovement(ps, pos)
-      }  
-  }
-}
-
-fun createRow(height, width, row, columns){
-  for (c <- columns){
-    if(row == 1.0 || row == 2.0){
-      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Ballroom")]
-    }else{
-      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Lobby")]
-    }
-  }
-}
-
-
-
-fun createGrid(height, width, rows, columns){
-  for (r <- rows){
-    [createRow(height, width, intToFloat(r), columns)]
-  }
-}
-
-fun getGridPos(grid, pid, currxind, curryind,code){
-  switch(code){
-        case "Init" ->
-          var newxind = currxind;
-          var newyind = curryind;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
-        case "ArrowDown" -> 
-          var newxind = currxind + 1;
-          var newyind = curryind;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
-  
-        case "ArrowUp" ->
-          var newxind = currxind - 1;
-          var newyind = curryind;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
-        case "ArrowLeft" -> 
-          var newxind = currxind;
-          var newyind = curryind - 1;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
-        case "ArrowRight" ->
-          var newxind = currxind;
-          var newyind = curryind + 1;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
-        case other ->
-          var newxind = currxind;
-          var newyind = curryind;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
-        }
-}
-
-fun getPid(id, pids){
-  switch(pids){
-    case p::ps ->
-      if (second(p) == id){
-        first(p)
-      }else{
-        getPid(id, ps)
-      }
-  }
-}
-
-fun changeRoom(id, pids, room){
-    switch(pids){
-    case [] -> 
-      []
-    case p::ps ->
-      var proc = first(p);
-      if(second(p) == id){
-        (first(p), second(p), room) :: changeRoom(id, ps, room)
-      }else{
-        p :: changeRoom(id, ps, room)
-      }  
+      p ! OpenConnection(pid);
+      p ! NewPidRegistered(pid);
+      p ! StartCall(pid);
+      broadcastPid(pid, ps)
   }
 }
 
 # Runs on the server, distributes PID list
-fun connectionServer(grid, pids) server {
+fun connectionServer(pids) server {
   receive {
-
-    case CreateGrid() ->
-      var sqwidth = 50;
-      var sqheight = 50;
-      var rows = 900 / sqheight;
-      var columns = 1800 / sqwidth;
-      var newgrid = createGrid(50.0, 50.0, [0..rows], [0..columns]);
-      print("finished grid");
-      connectionServer(newgrid, pids)
     case Register(newPid) ->
-      var id = intToString(length(pids));
-      var newPos = getGridPos(grid, id, startxind, startyind, "Init");
-      broadcastPid(newPid, id, pids, newPos.room, "None");
-      var newpids = (newPid, id, newPos.room) :: pids;
-      broadcastCharacterMovement(newpids, newPos);
-      # newPid ! SetMyId(id);
-      connectionServer(grid, newpids)
+      broadcastPid(newPid, pids);
+      connectionServer(newPid :: pids)
 
     case SendOffer(pid, initPid, sdp) ->
       pid ! OpenConnection(initPid);
       pid ! Offer(initPid, sdp);
-      connectionServer(grid, pids)
+      connectionServer(pids)
 
     case SendAnswer(initPid, pid, sdp) ->
       initPid ! Answer(pid, sdp);
-      connectionServer(grid, pids)
+      connectionServer(pids)
     
     case SendIceCandidates(initPid, pid, candidates) ->
       pid ! NewIceCandidates(initPid, candidates);
-      connectionServer(grid, pids)
-    
-    case CharacterMoved(id, currxind, curryind, currroom, code) ->
-      var newPos = getGridPos(grid, id, currxind, curryind, code);
-      var pid = getPid(id, pids);
-       
-      if (newPos.room <> currroom){
-        print("NEW ROOM");
-        print(newPos.room);
-        broadcastPid(pid, id, pids, newPos.room, currroom);
-        broadcastCharacterMovement(pids, newPos);
-        var newpids = changeRoom(id, pids, newPos.room);
-        connectionServer(grid, newpids)
-      }else{
-        broadcastCharacterMovement(pids, newPos);
-        connectionServer(grid, pids)
-      }
+      connectionServer(pids)
   }
 }
-
-
-var serverPid = spawn { connectionServer([], []) };
 
 fun awaitLocalSDPLoop(ourpid){
   if (WebRTC.isLocalSDP(ourpid)){
@@ -253,21 +78,18 @@ fun awaitVideoLoop(){
 }
 
 fun getNewIceCandidates(mypid, serverPid, pid){
-  switch (WebRTC.getIsNewIceCandidate(pid)){
-    case "True" ->
-      print("is new ice candidate true");
-      var candidates = WebRTC.getNewIceCandidates(pid);
-      serverPid ! SendIceCandidates(mypid, pid, candidates);
-      getNewIceCandidates(mypid, serverPid, pid)
-    case "False" ->
-      getNewIceCandidates(mypid, serverPid, pid)
-    case "End" ->
-      ()
+  if (WebRTC.getIsNewIceCandidate(pid)){
+    print("is new ice candidate true");
+    var candidates = WebRTC.getNewIceCandidates(pid);
+    serverPid ! SendIceCandidates(mypid, pid, candidates);
+    print("problem is here");
+    getNewIceCandidates(mypid, serverPid, pid)
   }
+  else{getNewIceCandidates(mypid, serverPid, pid)}
   
 }
 
-fun clientLoop(handler) client {
+fun clientLoop(serverPid) client {
   receive {
     case StartRegistration() ->
       var mypid = self();
@@ -283,12 +105,7 @@ fun clientLoop(handler) client {
       awaitVideoLoop();
       print("finished waiting");
       serverPid ! Register(mypid);
-      clientLoop(handler)
-
-    case SetMyId(id) ->
-      dispatch(SetPid(id), handler);
-      clientLoop(handler)
-      
+      clientLoop(serverPid)
 
     case NewPidRegistered(pid) ->
       domReplaceChildren(
@@ -297,17 +114,17 @@ fun clientLoop(handler) client {
           </#>, getNodeById("messageDisplay")
       );
       pid ! SendMessage("hello");
-      clientLoop(handler)
+      clientLoop(serverPid)
     
     case SendMessage(msg) ->
       domReplaceChildren(<#>{stringToXml(msg)}</#>, getNodeById("messageDisplay"));
-      clientLoop(handler)
+      clientLoop(serverPid)
 
     case OpenConnection(withPid) ->
       var mypid = self();
       print("setting up new connection");
       WebRTC.setupRTCConnection(withPid);
-      clientLoop(handler)
+      clientLoop(serverPid)
 
     case StartCall(pid) ->
       var ourpid = self();
@@ -316,7 +133,7 @@ fun clientLoop(handler) client {
       var myoffer = WebRTC.getOfferSDP(pid);
       print(myoffer);
       serverPid ! SendOffer(pid, ourpid, myoffer);
-      clientLoop(handler)
+      clientLoop(serverPid)
     
     case Offer(initPid, sdp) ->
       print("receiving offer");
@@ -328,7 +145,7 @@ fun clientLoop(handler) client {
       awaitLocalSDPLoop(initPid);
       var myanswer = WebRTC.getOfferSDP(initPid);
       serverPid ! SendAnswer(initPid, mypid, myanswer);
-      clientLoop(handler)
+      clientLoop(serverPid)
 
     case Answer(initPid, sdp) ->
       print("receiving answer");
@@ -338,121 +155,30 @@ fun clientLoop(handler) client {
       var iceLoop = spawnClient{getNewIceCandidates(mypid, serverPid, initPid)};
       print("finished");
       print(sdp);
-      clientLoop(handler)
+      clientLoop(serverPid)
 
     case NewIceCandidates(pid, candidates) ->
       WebRTC.addNewIceCandidates(pid, candidates);
-      clientLoop(handler)
-    
-    case Move(pos) ->
-      dispatch(IMoved(pos), handler);
-      clientLoop(handler)
-    
-    case OtherMoved(pos) ->
-      dispatch(OtherMoved(pos), handler);
-      clientLoop(handler)
-    
-    case CloseConnection(pid) ->
-      print("close connection");
-      WebRTC.closeRTCConnection(pid);
-      clientLoop(handler)
-}
-}
-
-fun updateOthersPositions(currentArray, newarray, pos){
-  switch(currentArray){
-    case [] -> pos::newarray
-    case p::ps ->
-      if (p.pid == pos.pid){
-        newarray ++ [pos] ++ ps
-      }
-      else{
-        updateOthersPositions(ps,p::newarray, pos)
-      }
-      
+      clientLoop(serverPid)
   }
 }
-
-typename Model = (myPosition: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float)]);
-typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | OtherMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) |];
-
-sig updt : (Msg, Model) ~> Model
-fun updt(msg, model){
-  switch(msg) {
-    case SetPid(mypid) ->
-      print("I am "^^mypid);
-      (myPosition= (pid=mypid, xind= model.myPosition.xind, yind= model.myPosition.yind, room = model.myPosition.room, xpos=model.myPosition.xpos, ypos=model.myPosition.ypos), othersPositions= model.othersPositions)
-    case UpdateEvent(evt) -> 
-        var myid = model.myPosition.pid;
-        var code = intToString(evt.code);
-        if (code == "ArrowDown" || code == "ArrowUp" || code == "ArrowLeft" || code == "ArrowRight"){
-          serverPid ! CharacterMoved(myid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, code);
-          model
-        }else{
-          model
-        }
-    case IMoved(newPos) ->
-        (myPosition = newPos, othersPositions = model.othersPositions)
-
-    case OtherMoved(pos) ->
-      var newPositions = updateOthersPositions(model.othersPositions, [], pos);
-      (myPosition = model.myPosition, othersPositions = newPositions)
-}
-}
-
-fun textPar((k, v)) {
-  p(MvuAttrs.empty, textNode(k ^^ ": " ^^ v))
-}
-
-fun i2s(i) { intToString(i) }
-fun b2s(b) { if(b) { "true" } else { "false"} }
-
-fun getOtherHTML(positions, htmlList) {
-  switch(positions){
-    case [] -> htmlList
-    case p::ps -> 
-      var props = MvuHTML.concat(map(textPar,
-      [
-      ("User", p.pid)
-      ]));
-      getOtherHTML(ps, htmlList ++ [div(style("position:absolute;top:"^^ floatToString(p.xpos)^^"px; left:"^^ floatToString(p.ypos)^^ "px; width:50px; height: 50px; border-style: dotted;"), props )])
-  }
-}
-
-
-sig view : (Model) ~> HTML(Msg)
-fun view(model) {
-    var props = MvuHTML.concat(map(textPar,
-    [
-    ("User", "ME")
-    ]));
-    MvuHTML.concat([MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px; width:50px; height: 50px; border-style: solid;"), props)])
-    
-    
-}
-
-sig subscriptions : (Model) -> Sub(Msg)
-fun subscriptions(_) {
-  onKeyDown(fun(evt) { UpdateEvent(evt) })
-}
-
-fun clientStart(){
-  var handler = runHandle("placeholder", (myPosition=(pid="None", xind=startxind, yind=startyind, room="Lobby", xpos=50.0, ypos=50.0), othersPositions=[]), view,
-      fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
-      MvuCommands.empty);
-  clientLoop(handler)
+fun startClientServer(serverPid, clientPid){
+  domReplaceChildren(
+            <video id="localVideo" width="320" height="240" autoplay="true">
+            </video>
+            , getNodeById("localVideoContainer"));
+  WebRTC.getLocalVideo();
+  awaitVideoLoop();
+  serverPid ! Register(clientPid)
 }
 
 fun mainPage(serverPid){
-  var clientPid = spawnClient{ clientStart() };
+
+  var clientPid = spawnClient{ clientLoop(serverPid) };
+
   page
     <html>
-      <head>
-        <title>Links - Subscriptions</title>
-      </head>
       <body>
-        <div id="placeholder">
-        </div>
         <div id="messageDisplay">
         </div>
         <div id="localVideoContainer">
@@ -465,8 +191,7 @@ fun mainPage(serverPid){
 
 
 fun main() {
-  serverPid ! CreateGrid;
-  print("started");
+  var serverPid = spawn { connectionServer([]) };
   addRoute("/", fun(_) {mainPage(serverPid)});
   addStaticRoute("/js", "js", [("js", "text/javascript")]);
   serveWebsockets();
