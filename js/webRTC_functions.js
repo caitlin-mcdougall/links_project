@@ -42,7 +42,7 @@ function _setupRTCConnection(pid){
     console.log("setting up RTC Connection");
     connection = new RTCPeerConnection(peerConnectionConfig);
     connection.onicecandidate = event => newIceCandidate(event, pid);
-    connection.ontrack = newRemoteTrack;
+    connection.ontrack = event => newRemoteTrack(event, pid);
     // getLocalVideo();
     var localvideo = document.getElementById("localVideo");
     console.log(localvideo.srcObject)
@@ -50,11 +50,23 @@ function _setupRTCConnection(pid){
     peerConn = {
         connection: connection,
         iceCandidates: [],
-        isNewIceCandidate: false
+        isNewIceCandidate: false,
+        remoteElement: null,
     };
     console.log("setting up rtc connection")
     console.log(pid)
     peerConnections[pid._clientPid] = peerConn;
+}
+
+function _closeRTCConnection(pid){
+    console.log("CLOSING CONNECTION")
+    console.log(pid._clientPid);
+    console.log(Object.keys(peerConnections))
+    if (pid._clientPid in peerConnections){
+        peerConnections[pid._clientPid].connection.close();
+        peerConnections[pid._clientPid].remoteElement.remove();
+        delete peerConnections[pid._clientPid];
+    }
 }
 
 function newIceCandidate(event, pid){
@@ -68,11 +80,19 @@ function newIceCandidate(event, pid){
 }
 
 function _getIsNewIceCandidate(pid){
-    isCandidate = peerConnections[pid._clientPid].isNewIceCandidate;
-    return isCandidate;
+    if(pid._clientPid in peerConnections){
+        if (peerConnections[pid._clientPid].isNewIceCandidate){
+            return "True";
+        }
+        else{
+            return "False";
+        }
+    }else{
+        return "End";
+    }
 }
 
-function newRemoteTrack(event){
+function newRemoteTrack(event, pid){
     if(!event){
         return null
     }
@@ -88,7 +108,8 @@ function newRemoteTrack(event){
         newVid.setAttribute('height', '240px');
         newVid.setAttribute("autoplay", "true")
         newVid.srcObject = event.streams[0];
-        remoteVideo.appendChild(newVid)
+        peerConnections[pid._clientPid].remoteElement = newVid;
+        remoteVideo.appendChild(newVid);
         console.log(event.streams);
     }
     return
@@ -106,9 +127,9 @@ function _getNewIceCandidates(pid){
 
 function _addNewIceCandidates(pid, candidate){
     console.log("adding new ice candidate")
-    console.log(pid)
-    console.log(Object.keys(peerConnections))
-    console.log(peerConnections[pid._clientPid].connection)
+    // console.log(pid)
+    // console.log(Object.keys(peerConnections))
+    // console.log(peerConnections[pid._clientPid].connection)
     iceCandidate = new RTCIceCandidate(candidate)
     peerConnections[pid._clientPid].connection.addIceCandidate(iceCandidate)
     console.log("finished adding ice candidate")
@@ -127,15 +148,15 @@ function _getOfferSDP(pid){
 }
 
 function _isLocalSDP(pid){
-    console.log("++++++++++++++++++")
-    console.log(peerConnections)
-    console.log(pid._clientPid)
+    // console.log("++++++++++++++++++")
+    // console.log(peerConnections)
+    // console.log(pid._clientPid)
     return !(!peerConnections[pid._clientPid].connection.localDescription);
 }
 function _isRemoteSDP(pid){
-    console.log("__________________")
-    console.log(peerConnections)
-    console.log(pid._clientPid)
+    // console.log("__________________")
+    // console.log(peerConnections)
+    // console.log(pid._clientPid)
     return !(!peerConnections[pid._clientPid].connection.remoteDescription);
 }
 
@@ -173,3 +194,4 @@ var getLocalVideo = LINKS.kify(_getLocalVideo);
 var isLocalVideo = LINKS.kify(_isLocalVideo);
 var getIsNewIceCandidate = LINKS.kify(_getIsNewIceCandidate);
 var addNewIceCandidates = LINKS.kify(_addNewIceCandidates);
+var closeRTCConnection = LINKS.kify(_closeRTCConnection);
