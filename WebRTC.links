@@ -17,69 +17,216 @@ module WebRTC {
     isRemoteSDP : (wild) ~%~> (Bool);
     getLocalVideo : () ~%~> ();
     isLocalVideo : () ~%~> (Bool);
-    getIsNewIceCandidate : (wild) ~%~> (Bool);
+    getIsNewIceCandidate : (wild) ~%~> (String);
     getNewIceCandidates : (wild) ~%~> (String);
     addNewIceCandidates : (wild, String) ~%~> ();
+    closeRTCConnection : (wild) ~%~> ();
   }
 }
 
-fun broadcastPid(pid, currentPids) server {
+var startxind = 5;
+var startyind = 5;
+
+fun broadcastPid(pid, id, currentPids, newroom, oldroom) server {
   switch (currentPids) {
     case [] -> ()
     case p::ps ->
       var proc = first(p);
-      proc ! OpenConnection(pid);
-      proc ! NewPidRegistered(pid);
-      proc ! StartCall(pid);
-      broadcastPid(pid, ps)
+      if (second(p) == id){
+        broadcastPid(pid, id, ps, newroom, oldroom)
+      }
+      else{
+        if (third(p) == newroom){
+          print("same room");
+          print(newroom);
+          proc ! OpenConnection(pid);
+          proc ! NewPidRegistered(pid);
+          proc ! StartCall(pid);
+          broadcastPid(pid, id, ps, newroom, oldroom)
+        }
+        else{
+          if (third(p) == oldroom){
+            print("different rooms");
+            print(oldroom);
+            proc ! CloseConnection(pid);
+            pid ! CloseConnection(proc);
+            broadcastPid(pid, id, ps, newroom, oldroom)
+          }else{
+            broadcastPid(pid, id, ps, newroom, oldroom)
+          }
+        }
+      }
+      
   }
 }
 
 fun broadcastCharacterMovement(pids, pos) server {
   switch(pids){
-    case [] -> ()
+    case [] -> 
+      ()
     case p::ps ->
+      var proc = first(p);
       if(second(p) == pos.pid){
+        proc ! Move(pos);
         broadcastCharacterMovement(ps, pos)
       }else{
-        var proc = first(p);
         proc ! OtherMoved(pos);
         broadcastCharacterMovement(ps, pos)
       }  
   }
 }
 
+fun createRow(height, width, row, columns){
+  for (c <- columns){
+    if(row == 1.0 || row == 2.0){
+      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Ballroom")]
+    }else{
+      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Lobby")]
+    }
+  }
+}
+
+
+
+fun createGrid(height, width, rows, columns){
+  for (r <- rows){
+    [createRow(height, width, intToFloat(r), columns)]
+  }
+}
+
+fun getGridPos(grid, pid, currxind, curryind,code){
+  switch(code){
+        case "Init" ->
+          var newxind = currxind;
+          var newyind = curryind;
+          var square = selectElem(selectElem(grid, newxind), newyind);
+          var newroom = square.room;
+          var newxpos = square.tpos;
+          var newypos = square.lpos;
+          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+        case "ArrowDown" -> 
+          var newxind = currxind + 1;
+          var newyind = curryind;
+          var square = selectElem(selectElem(grid, newxind), newyind);
+          var newroom = square.room;
+          var newxpos = square.tpos;
+          var newypos = square.lpos;
+          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+  
+        case "ArrowUp" ->
+          var newxind = currxind - 1;
+          var newyind = curryind;
+          var square = selectElem(selectElem(grid, newxind), newyind);
+          var newroom = square.room;
+          var newxpos = square.tpos;
+          var newypos = square.lpos;
+          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+        case "ArrowLeft" -> 
+          var newxind = currxind;
+          var newyind = curryind - 1;
+          var square = selectElem(selectElem(grid, newxind), newyind);
+          var newroom = square.room;
+          var newxpos = square.tpos;
+          var newypos = square.lpos;
+          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+        case "ArrowRight" ->
+          var newxind = currxind;
+          var newyind = curryind + 1;
+          var square = selectElem(selectElem(grid, newxind), newyind);
+          var newroom = square.room;
+          var newxpos = square.tpos;
+          var newypos = square.lpos;
+          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+        case other ->
+          var newxind = currxind;
+          var newyind = curryind;
+          var square = selectElem(selectElem(grid, newxind), newyind);
+          var newroom = square.room;
+          var newxpos = square.tpos;
+          var newypos = square.lpos;
+          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+        }
+}
+
+fun getPid(id, pids){
+  switch(pids){
+    case p::ps ->
+      if (second(p) == id){
+        first(p)
+      }else{
+        getPid(id, ps)
+      }
+  }
+}
+
+fun changeRoom(id, pids, room){
+    switch(pids){
+    case [] -> 
+      []
+    case p::ps ->
+      var proc = first(p);
+      if(second(p) == id){
+        (first(p), second(p), room) :: changeRoom(id, ps, room)
+      }else{
+        p :: changeRoom(id, ps, room)
+      }  
+  }
+}
+
 # Runs on the server, distributes PID list
-fun connectionServer(pids) server {
+fun connectionServer(grid, pids) server {
   receive {
+
+    case CreateGrid() ->
+      var sqwidth = 50;
+      var sqheight = 50;
+      var rows = 900 / sqheight;
+      var columns = 1800 / sqwidth;
+      var newgrid = createGrid(50.0, 50.0, [0..rows], [0..columns]);
+      print("finished grid");
+      connectionServer(newgrid, pids)
     case Register(newPid) ->
-      broadcastPid(newPid, pids);
       var id = intToString(length(pids));
-      newPid ! SetMyId(id);
-      var newpids = (newPid, id) :: pids;
+      var newPos = getGridPos(grid, id, startxind, startyind, "Init");
+      broadcastPid(newPid, id, pids, newPos.room, "None");
+      var newpids = (newPid, id, newPos.room) :: pids;
+      broadcastCharacterMovement(newpids, newPos);
       # newPid ! SetMyId(id);
-      connectionServer(newpids)
+      connectionServer(grid, newpids)
 
     case SendOffer(pid, initPid, sdp) ->
       pid ! OpenConnection(initPid);
       pid ! Offer(initPid, sdp);
-      connectionServer(pids)
+      connectionServer(grid, pids)
 
     case SendAnswer(initPid, pid, sdp) ->
       initPid ! Answer(pid, sdp);
-      connectionServer(pids)
+      connectionServer(grid, pids)
     
     case SendIceCandidates(initPid, pid, candidates) ->
       pid ! NewIceCandidates(initPid, candidates);
-      connectionServer(pids)
+      connectionServer(grid, pids)
     
-    case CharacterMoved(pos) ->
-      broadcastCharacterMovement(pids, pos);
-      connectionServer(pids)
+    case CharacterMoved(id, currxind, curryind, currroom, code) ->
+      var newPos = getGridPos(grid, id, currxind, curryind, code);
+      var pid = getPid(id, pids);
+       
+      if (newPos.room <> currroom){
+        print("NEW ROOM");
+        print(newPos.room);
+        broadcastPid(pid, id, pids, newPos.room, currroom);
+        broadcastCharacterMovement(pids, newPos);
+        var newpids = changeRoom(id, pids, newPos.room);
+        connectionServer(grid, newpids)
+      }else{
+        broadcastCharacterMovement(pids, newPos);
+        connectionServer(grid, pids)
+      }
   }
 }
 
-var serverPid = spawn { connectionServer([]) };
+
+var serverPid = spawn { connectionServer([], []) };
 
 fun awaitLocalSDPLoop(ourpid){
   if (WebRTC.isLocalSDP(ourpid)){
@@ -106,13 +253,17 @@ fun awaitVideoLoop(){
 }
 
 fun getNewIceCandidates(mypid, serverPid, pid){
-  if (WebRTC.getIsNewIceCandidate(pid)){
-    print("is new ice candidate true");
-    var candidates = WebRTC.getNewIceCandidates(pid);
-    serverPid ! SendIceCandidates(mypid, pid, candidates);
-    getNewIceCandidates(mypid, serverPid, pid)
+  switch (WebRTC.getIsNewIceCandidate(pid)){
+    case "True" ->
+      print("is new ice candidate true");
+      var candidates = WebRTC.getNewIceCandidates(pid);
+      serverPid ! SendIceCandidates(mypid, pid, candidates);
+      getNewIceCandidates(mypid, serverPid, pid)
+    case "False" ->
+      getNewIceCandidates(mypid, serverPid, pid)
+    case "End" ->
+      ()
   }
-  else{getNewIceCandidates(mypid, serverPid, pid)}
   
 }
 
@@ -193,8 +344,17 @@ fun clientLoop(handler) client {
       WebRTC.addNewIceCandidates(pid, candidates);
       clientLoop(handler)
     
+    case Move(pos) ->
+      dispatch(IMoved(pos), handler);
+      clientLoop(handler)
+    
     case OtherMoved(pos) ->
       dispatch(OtherMoved(pos), handler);
+      clientLoop(handler)
+    
+    case CloseConnection(pid) ->
+      print("close connection");
+      WebRTC.closeRTCConnection(pid);
       clientLoop(handler)
 }
 }
@@ -213,40 +373,27 @@ fun updateOthersPositions(currentArray, newarray, pos){
   }
 }
 
-typename Model = (myPosition: (pid: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xpos: Float, ypos: Float)]);
-typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | OtherMoved: (pid: String, xpos: Float, ypos: Float) |];
+typename Model = (myPosition: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float)]);
+typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | OtherMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) |];
 
 sig updt : (Msg, Model) ~> Model
 fun updt(msg, model){
   switch(msg) {
     case SetPid(mypid) ->
       print("I am "^^mypid);
-      (myPosition= (pid=mypid, xpos=model.myPosition.xpos, ypos=model.myPosition.ypos), othersPositions= model.othersPositions)
+      (myPosition= (pid=mypid, xind= model.myPosition.xind, yind= model.myPosition.yind, room = model.myPosition.room, xpos=model.myPosition.xpos, ypos=model.myPosition.ypos), othersPositions= model.othersPositions)
     case UpdateEvent(evt) -> 
-        var mypid = model.myPosition.pid;
+        var myid = model.myPosition.pid;
         var code = intToString(evt.code);
-        switch(code){
-            case "ArrowDown" -> 
-              var newPos =  (pid = model.myPosition.pid, xpos = model.myPosition.xpos +. 2.5,ypos =  model.myPosition.ypos);
-              serverPid ! CharacterMoved(newPos);
-              (myPosition = newPos, othersPositions = model.othersPositions)
-            case "ArrowUp" ->
-              var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos -. 2.5, ypos = model.myPosition.ypos);
-              serverPid ! CharacterMoved(newPos);
-              (myPosition = newPos, othersPositions = model.othersPositions)
-            case "ArrowLeft" -> 
-              var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos -. 2.5);
-              serverPid ! CharacterMoved(newPos);
-              (myPosition = newPos, othersPositions = model.othersPositions)
-            case "ArrowRight" ->
-              var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos +. 2.5);
-              serverPid ! CharacterMoved(newPos);
-              (myPosition = newPos, othersPositions = model.othersPositions)
-            case other ->
-              var newPos = (pid = model.myPosition.pid, xpos = model.myPosition.xpos, ypos = model.myPosition.ypos);
-              serverPid ! CharacterMoved(newPos);
-              (myPosition = newPos, othersPositions = model.othersPositions)
+        if (code == "ArrowDown" || code == "ArrowUp" || code == "ArrowLeft" || code == "ArrowRight"){
+          serverPid ! CharacterMoved(myid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, code);
+          model
+        }else{
+          model
         }
+    case IMoved(newPos) ->
+        (myPosition = newPos, othersPositions = model.othersPositions)
+
     case OtherMoved(pos) ->
       var newPositions = updateOthersPositions(model.othersPositions, [], pos);
       (myPosition = model.myPosition, othersPositions = newPositions)
@@ -266,10 +413,9 @@ fun getOtherHTML(positions, htmlList) {
     case p::ps -> 
       var props = MvuHTML.concat(map(textPar,
       [
-      ("x position", floatToString(p.xpos)),
-      ("y position", floatToString(p.ypos))
+      ("User", p.pid)
       ]));
-      getOtherHTML(ps, htmlList ++ [div(style("position:absolute;top:"^^ floatToString(p.xpos)^^"px; left:"^^ floatToString(p.ypos)^^ "px; border-style: dotted;"), props )])
+      getOtherHTML(ps, htmlList ++ [div(style("position:absolute;top:"^^ floatToString(p.xpos)^^"px; left:"^^ floatToString(p.ypos)^^ "px; width:50px; height: 50px; border-style: dotted;"), props )])
   }
 }
 
@@ -278,10 +424,9 @@ sig view : (Model) ~> HTML(Msg)
 fun view(model) {
     var props = MvuHTML.concat(map(textPar,
     [
-    ("x position", floatToString(model.myPosition.xpos)),
-    ("y position", floatToString(model.myPosition.ypos))
+    ("User", "ME")
     ]));
-    MvuHTML.concat([MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px;"), props)])
+    MvuHTML.concat([MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px; width:50px; height: 50px; border-style: solid;"), props)])
     
     
 }
@@ -292,7 +437,7 @@ fun subscriptions(_) {
 }
 
 fun clientStart(){
-  var handler = runHandle("placeholder", (myPosition=(pid="None", xpos=50.0, ypos=50.0), othersPositions=[]), view,
+  var handler = runHandle("placeholder", (myPosition=(pid="None", xind=startxind, yind=startyind, room="Lobby", xpos=50.0, ypos=50.0), othersPositions=[]), view,
       fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
       MvuCommands.empty);
   clientLoop(handler)
@@ -320,7 +465,8 @@ fun mainPage(serverPid){
 
 
 fun main() {
-
+  serverPid ! CreateGrid;
+  print("started");
   addRoute("/", fun(_) {mainPage(serverPid)});
   addStaticRoute("/js", "js", [("js", "text/javascript")]);
   serveWebsockets();
