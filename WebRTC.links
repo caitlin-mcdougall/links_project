@@ -27,11 +27,23 @@ module WebRTC {
 var startxind = 5;
 var startyind = 5;
 
+var sqwidth = 50;
+var sqheight = 50;
+var rows = 1400 / sqheight;
+var columns = 1400 / sqwidth;
+
+
 fun broadcastPid(pid, id, currentPids, newroom, oldroom) server {
   switch (currentPids) {
     case [] -> ()
     case p::ps ->
       var proc = first(p);
+      if (oldroom == "None"){
+        proc ! RequestPosition(pid)
+      }
+      else {
+
+      };
       if (second(p) == id){
         broadcastPid(pid, id, ps, newroom, oldroom)
       }
@@ -78,9 +90,19 @@ fun broadcastCharacterMovement(pids, pos) server {
 
 fun createRow(height, width, row, columns){
   for (c <- columns){
-    if(row == 1.0 || row == 2.0){
+    if(row >= 1.0 && row <= 9.0 && c >= 1 && c <= 11){
+      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Lounge")]
+    }
+    else if(row >= 1.0 && row <= 7.0 && c >= 18 && c <= 27){
+      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Kitchen")]
+    }
+    else if(row >= 12.0 && row <= 23.0 && c >= 20 && c <= 27){
+      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Study")]
+    }
+    else if(row >= 14.0 && row <= 26.0 && c >= 1 && c <= 15){
       [(tpos=height*.row, lpos=width*.intToFloat(c), room="Ballroom")]
-    }else{
+    }
+    else{
       [(tpos=height*.row, lpos=width*.intToFloat(c), room="Lobby")]
     }
   }
@@ -105,38 +127,84 @@ fun getGridPos(grid, pid, currxind, curryind,code){
           var newypos = square.lpos;
           (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
         case "ArrowDown" -> 
-          var newxind = currxind + 1;
-          var newyind = curryind;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+          if (currxind == rows-2){
+            var newxind = currxind;
+            var newyind = curryind;
+            var square = selectElem(selectElem(grid, newxind), newyind);
+            var newroom = square.room;
+            var newxpos = square.tpos;
+            var newypos = square.lpos;
+            (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+          }
+          else {
+            var newxind = currxind+1;
+            var newyind = curryind;
+            var square = selectElem(selectElem(grid, newxind), newyind);
+            var newroom = square.room;
+            var newxpos = square.tpos;
+            var newypos = square.lpos;
+            (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+          }
+          
+            
   
         case "ArrowUp" ->
-          var newxind = currxind - 1;
-          var newyind = curryind;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+          if (currxind == 1){
+              var newxind = currxind;
+              var newyind = curryind;
+              var square = selectElem(selectElem(grid, newxind), newyind);
+              var newroom = square.room;
+              var newxpos = square.tpos;
+              var newypos = square.lpos;
+              (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+            }
+            else {
+              var newxind = currxind - 1;
+              var newyind = curryind;
+              var square = selectElem(selectElem(grid, newxind), newyind);
+              var newroom = square.room;
+              var newxpos = square.tpos;
+              var newypos = square.lpos;
+            (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+            }
         case "ArrowLeft" -> 
-          var newxind = currxind;
-          var newyind = curryind - 1;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+          if (curryind == 1){
+              var newxind = currxind;
+              var newyind = curryind;
+              var square = selectElem(selectElem(grid, newxind), newyind);
+              var newroom = square.room;
+              var newxpos = square.tpos;
+              var newypos = square.lpos;
+              (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+            }
+            else {
+              var newxind = currxind;
+              var newyind = curryind - 1;
+              var square = selectElem(selectElem(grid, newxind), newyind);
+              var newroom = square.room;
+              var newxpos = square.tpos;
+              var newypos = square.lpos;
+              (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+            }
         case "ArrowRight" ->
-          var newxind = currxind;
-          var newyind = curryind + 1;
-          var square = selectElem(selectElem(grid, newxind), newyind);
-          var newroom = square.room;
-          var newxpos = square.tpos;
-          var newypos = square.lpos;
-          (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+          if (curryind == columns-2){
+              var newxind = currxind;
+              var newyind = curryind;
+              var square = selectElem(selectElem(grid, newxind), newyind);
+              var newroom = square.room;
+              var newxpos = square.tpos;
+              var newypos = square.lpos;
+              (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+            }
+            else {
+              var newxind = currxind;
+              var newyind = curryind + 1;
+              var square = selectElem(selectElem(grid, newxind), newyind);
+              var newroom = square.room;
+              var newxpos = square.tpos;
+              var newypos = square.lpos;
+              (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+            }
         case other ->
           var newxind = currxind;
           var newyind = curryind;
@@ -178,10 +246,6 @@ fun connectionServer(grid, pids) server {
   receive {
 
     case CreateGrid() ->
-      var sqwidth = 50;
-      var sqheight = 50;
-      var rows = 900 / sqheight;
-      var columns = 1800 / sqwidth;
       var newgrid = createGrid(50.0, 50.0, [0..rows], [0..columns]);
       print("finished grid");
       connectionServer(newgrid, pids)
@@ -298,6 +362,10 @@ fun clientLoop(handler) client {
       );
       pid ! SendMessage("hello");
       clientLoop(handler)
+
+    case RequestPosition(pid) ->
+      dispatch(SendPosition(), handler);
+      clientLoop(handler)
     
     case SendMessage(msg) ->
       domReplaceChildren(<#>{stringToXml(msg)}</#>, getNodeById("messageDisplay"));
@@ -374,7 +442,7 @@ fun updateOthersPositions(currentArray, newarray, pos){
 }
 
 typename Model = (myPosition: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float)]);
-typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | OtherMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) |];
+typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | OtherMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | SendPosition |];
 
 sig updt : (Msg, Model) ~> Model
 fun updt(msg, model){
@@ -391,8 +459,12 @@ fun updt(msg, model){
         }else{
           model
         }
+
+    case SendPosition() ->
+      serverPid ! CharacterMoved(model.myPosition.pid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, "Init");
+      model
     case IMoved(newPos) ->
-        (myPosition = newPos, othersPositions = model.othersPositions)
+      (myPosition = newPos, othersPositions = model.othersPositions)
 
     case OtherMoved(pos) ->
       var newPositions = updateOthersPositions(model.othersPositions, [], pos);
@@ -415,7 +487,7 @@ fun getOtherHTML(positions, htmlList) {
       [
       ("User", p.pid)
       ]));
-      getOtherHTML(ps, htmlList ++ [div(style("position:absolute;top:"^^ floatToString(p.xpos)^^"px; left:"^^ floatToString(p.ypos)^^ "px; width:50px; height: 50px; border-style: dotted;"), props )])
+      getOtherHTML(ps, htmlList ++ [div(style("position:absolute;top:"^^ floatToString(p.xpos)^^"px; left:"^^ floatToString(p.ypos)^^ "px; width:50px; height: 50px; outline: 2px solid black;"), props )])
   }
 }
 
@@ -426,7 +498,7 @@ fun view(model) {
     [
     ("User", "ME")
     ]));
-    MvuHTML.concat([MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px; width:50px; height: 50px; border-style: solid;"), props)])
+    MvuHTML.concat([div(style("position:absolute; background-image: url(pixilart-drawing.png);"), textNode("")),MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px; width:50px; height: 50px; outline: 2px solid black;"), props)])
     
     
 }
@@ -440,6 +512,15 @@ fun clientStart(){
   var handler = runHandle("placeholder", (myPosition=(pid="None", xind=startxind, yind=startyind, room="Lobby", xpos=50.0, ypos=50.0), othersPositions=[]), view,
       fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
       MvuCommands.empty);
+  var body = getNodeById("background");   
+  domSetStyleAttrFromRef(body, "height", "1400px");
+  domSetStyleAttrFromRef(body, "width", "1400px");
+  domSetStyleAttrFromRef(body, "background-image", "url(https://art.pixilart.com/sr2a3bba315969e.png)");
+  domSetStyleAttrFromRef(body, "background-position", "center");
+  domSetStyleAttrFromRef(body, "background-size", "cover");
+  domSetStyleAttrFromRef(body, "top", "0px");
+  domSetStyleAttrFromRef(body, "left", "0px");
+  domSetStyleAttrFromRef(body, "position", "absolute");
   clientLoop(handler)
 }
 
@@ -451,12 +532,14 @@ fun mainPage(serverPid){
         <title>Links - Subscriptions</title>
       </head>
       <body>
+        <div id="background">
         <div id="placeholder">
         </div>
         <div id="messageDisplay">
         </div>
         <div id="localVideoContainer">
         <input type="button" value="load" l:onclick="{clientPid ! StartRegistration()}"/>
+        </div>
         </div>
       </body>
     </html>
