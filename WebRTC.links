@@ -24,13 +24,25 @@ module WebRTC {
   }
 }
 
-var startxind = 5;
-var startyind = 5;
+var startxind = 10;
+var startyind = 10;
 
 var sqwidth = 50;
 var sqheight = 50;
 var rows = 1400 / sqheight;
 var columns = 1400 / sqwidth;
+
+var lounge = (name="Lounge", xmin=1, xmax=9, ymin=1, ymax=11, members=[]);
+var kitchen = (name="Kitchen", xmin=1, xmax=7, ymin=18, ymax=27, members=[]);
+var study = (name="Study", xmin=12, xmax=23, ymin=20, ymax=27, members=[]);
+var ballroom = (name="Ballroom", xmin=14, xmax=26, ymin=1, ymax=15, members=[]);
+var lobby = (name="Lobby", xmin=10, xmax=11, ymin=16, ymax=17, members=[]);
+
+var loungemembers = (name="Lounge", members=[]);
+var kitchenmembers = (name="Kitchen", members=[]);
+var studymembers = (name="Study", members=[]);
+var ballroommembers = (name="Ballroom", members=[]);
+var lobbymembers = (name="Lobby", members=[]);
 
 
 fun broadcastPid(pid, id, currentPids, newroom, oldroom) server {
@@ -38,6 +50,7 @@ fun broadcastPid(pid, id, currentPids, newroom, oldroom) server {
     case [] -> ()
     case p::ps ->
       var proc = first(p);
+      proc ! UpdateRooms(id, oldroom, newroom);
       if (oldroom == "None"){
         proc ! RequestPosition(pid)
       }
@@ -49,17 +62,12 @@ fun broadcastPid(pid, id, currentPids, newroom, oldroom) server {
       }
       else{
         if (third(p) == newroom){
-          print("same room");
-          print(newroom);
           proc ! OpenConnection(pid);
-          proc ! NewPidRegistered(pid);
           proc ! StartCall(pid);
           broadcastPid(pid, id, ps, newroom, oldroom)
         }
         else{
           if (third(p) == oldroom){
-            print("different rooms");
-            print(oldroom);
             proc ! CloseConnection(pid);
             pid ! CloseConnection(proc);
             broadcastPid(pid, id, ps, newroom, oldroom)
@@ -90,20 +98,20 @@ fun broadcastCharacterMovement(pids, pos) server {
 
 fun createRow(height, width, row, columns){
   for (c <- columns){
-    if(row >= 1.0 && row <= 9.0 && c >= 1 && c <= 11){
-      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Lounge")]
+    if(row >= lounge.xmin && row <= lounge.xmax && c >= lounge.ymin && c <= lounge.ymax){
+      [(tpos=height*.intToFloat(row), lpos=width*.intToFloat(c), room="Lounge")]
     }
-    else if(row >= 1.0 && row <= 7.0 && c >= 18 && c <= 27){
-      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Kitchen")]
+    else if(row >= kitchen.xmin && row <= kitchen.xmax && c >= kitchen.ymin && c <= kitchen.ymax){
+      [(tpos=height*.intToFloat(row), lpos=width*.intToFloat(c), room="Kitchen")]
     }
-    else if(row >= 12.0 && row <= 23.0 && c >= 20 && c <= 27){
-      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Study")]
+    else if(row >= study.xmin && row <= study.xmax && c >= study.ymin && c <= study.ymax){
+      [(tpos=height*.intToFloat(row), lpos=width*.intToFloat(c), room="Study")]
     }
-    else if(row >= 14.0 && row <= 26.0 && c >= 1 && c <= 15){
-      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Ballroom")]
+    else if(row >= ballroom.xmin && row <= ballroom.xmax && c >= ballroom.ymin && c <= ballroom.ymax){
+      [(tpos=height*.intToFloat(row), lpos=width*.intToFloat(c), room="Ballroom")]
     }
     else{
-      [(tpos=height*.row, lpos=width*.intToFloat(c), room="Lobby")]
+      [(tpos=height*.intToFloat(row), lpos=width*.intToFloat(c), room="Lobby")]
     }
   }
 }
@@ -112,7 +120,7 @@ fun createRow(height, width, row, columns){
 
 fun createGrid(height, width, rows, columns){
   for (r <- rows){
-    [createRow(height, width, intToFloat(r), columns)]
+    [createRow(height, width, r, columns)]
   }
 }
 
@@ -227,70 +235,108 @@ fun getPid(id, pids){
   }
 }
 
-fun changeRoom(id, pids, room){
+fun updatePidRooms(id, pids, room){
     switch(pids){
     case [] -> 
       []
     case p::ps ->
-      var proc = first(p);
       if(second(p) == id){
-        (first(p), second(p), room) :: changeRoom(id, ps, room)
+        (first(p), second(p), room) :: updatePidRooms(id, ps, room)
       }else{
-        p :: changeRoom(id, ps, room)
+        p :: updatePidRooms(id, ps, room)
       }  
   }
 }
 
+fun addToRoom(room, id){
+  print("add to room");
+  (name=room.name, members=id :: room.members)
+}
+
+fun removeFromRoom(members, id){
+  switch(members) {
+    case [] ->
+      []
+    case p::ps ->
+      if (p <> id){
+        p :: removeFromRoom(ps, id)
+      }
+      else{
+        removeFromRoom(ps, id)
+      }
+  }
+}
+
+
+
+fun updateRoomPids(id, rooms, oldroom, newroom){
+    switch(rooms){
+    case [] -> 
+      []
+    case p::ps ->
+      if (p.name == newroom){
+        addToRoom(p, id) :: updateRoomPids(id, ps, oldroom, newroom)
+      }
+      else if (p.name == oldroom){
+        (name=p.name, members=removeFromRoom(p.members, id)) :: updateRoomPids(id, ps, oldroom, newroom)
+      }
+      else {
+        p :: updateRoomPids(id, ps, oldroom, newroom)
+      }
+  }
+
+}
+
 # Runs on the server, distributes PID list
-fun connectionServer(grid, pids) server {
+fun connectionServer(grid, pids, rooms) server {
   receive {
 
     case CreateGrid() ->
       var newgrid = createGrid(50.0, 50.0, [0..rows], [0..columns]);
       print("finished grid");
-      connectionServer(newgrid, pids)
-    case Register(newPid) ->
+      connectionServer(newgrid, pids, rooms)
+    case Register(newPid, conferenceStyle) ->
       var id = intToString(length(pids));
       var newPos = getGridPos(grid, id, startxind, startyind, "Init");
       broadcastPid(newPid, id, pids, newPos.room, "None");
       var newpids = (newPid, id, newPos.room) :: pids;
       broadcastCharacterMovement(newpids, newPos);
+      newPid ! ChangeState(conferenceStyle);
       # newPid ! SetMyId(id);
-      connectionServer(grid, newpids)
+      connectionServer(grid, newpids, rooms)
 
     case SendOffer(pid, initPid, sdp) ->
       pid ! OpenConnection(initPid);
       pid ! Offer(initPid, sdp);
-      connectionServer(grid, pids)
+      connectionServer(grid, pids, rooms)
 
     case SendAnswer(initPid, pid, sdp) ->
       initPid ! Answer(pid, sdp);
-      connectionServer(grid, pids)
+      connectionServer(grid, pids, rooms)
     
     case SendIceCandidates(initPid, pid, candidates) ->
       pid ! NewIceCandidates(initPid, candidates);
-      connectionServer(grid, pids)
+      connectionServer(grid, pids, rooms)
     
     case CharacterMoved(id, currxind, curryind, currroom, code) ->
       var newPos = getGridPos(grid, id, currxind, curryind, code);
       var pid = getPid(id, pids);
        
       if (newPos.room <> currroom){
-        print("NEW ROOM");
-        print(newPos.room);
         broadcastPid(pid, id, pids, newPos.room, currroom);
         broadcastCharacterMovement(pids, newPos);
-        var newpids = changeRoom(id, pids, newPos.room);
-        connectionServer(grid, newpids)
+        var newpids = updatePidRooms(id, pids, newPos.room);
+        # var newrooms = updateRoomPids(id, rooms, currroom, newPos.room);
+        connectionServer(grid, newpids, rooms)
       }else{
         broadcastCharacterMovement(pids, newPos);
-        connectionServer(grid, pids)
+        connectionServer(grid, pids, rooms)
       }
   }
 }
 
 
-var serverPid = spawn { connectionServer([], []) };
+var serverPid = spawn { connectionServer([], [], [lounge,kitchen,ballroom,study,lobby]) };
 
 fun awaitLocalSDPLoop(ourpid){
   if (WebRTC.isLocalSDP(ourpid)){
@@ -333,42 +379,26 @@ fun getNewIceCandidates(mypid, serverPid, pid){
 
 fun clientLoop(handler) client {
   receive {
-    case StartRegistration() ->
+    case StartRegistration(conferenceStyle) ->
       var mypid = self();
       domReplaceChildren(
           <#>
           <video id="localVideo" width="320" height="240" autoplay="true">
           </video>
-          <div id="remoteVideo">
-          </div>
           </#>
           , getNodeById("localVideoContainer"));
       WebRTC.getLocalVideo();
       awaitVideoLoop();
       print("finished waiting");
-      serverPid ! Register(mypid);
+      serverPid ! Register(mypid, conferenceStyle);
       clientLoop(handler)
 
     case SetMyId(id) ->
       dispatch(SetPid(id), handler);
       clientLoop(handler)
-      
-
-    case NewPidRegistered(pid) ->
-      domReplaceChildren(
-          <#>
-          New pid
-          </#>, getNodeById("messageDisplay")
-      );
-      pid ! SendMessage("hello");
-      clientLoop(handler)
 
     case RequestPosition(pid) ->
       dispatch(SendPosition(), handler);
-      clientLoop(handler)
-    
-    case SendMessage(msg) ->
-      domReplaceChildren(<#>{stringToXml(msg)}</#>, getNodeById("messageDisplay"));
       clientLoop(handler)
 
     case OpenConnection(withPid) ->
@@ -424,6 +454,17 @@ fun clientLoop(handler) client {
       print("close connection");
       WebRTC.closeRTCConnection(pid);
       clientLoop(handler)
+
+    case ChangeState(newState) ->
+      print("state change");
+      dispatch(StateChange(newState), handler);
+      clientLoop(handler)
+
+    case UpdateRooms(id, oldroom, newroom) ->
+      dispatch(UpdateRoomPids(id, oldroom, newroom), handler);
+      clientLoop(handler)
+
+
 }
 }
 
@@ -441,15 +482,15 @@ fun updateOthersPositions(currentArray, newarray, pos){
   }
 }
 
-typename Model = (myPosition: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float)]);
-typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | OtherMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | SendPosition |];
+typename Model = (state: String, myPosition: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float)], rooms: [(name:String, members:[String])]);
+typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | OtherMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | SendPosition | StateChange: String| UpdateRoomPids: (String, String, String)|];
 
 sig updt : (Msg, Model) ~> Model
 fun updt(msg, model){
   switch(msg) {
     case SetPid(mypid) ->
       print("I am "^^mypid);
-      (myPosition= (pid=mypid, xind= model.myPosition.xind, yind= model.myPosition.yind, room = model.myPosition.room, xpos=model.myPosition.xpos, ypos=model.myPosition.ypos), othersPositions= model.othersPositions)
+      (state= model.state, myPosition= (pid=mypid, xind= model.myPosition.xind, yind= model.myPosition.yind, room = model.myPosition.room, xpos=model.myPosition.xpos, ypos=model.myPosition.ypos), othersPositions= model.othersPositions, rooms=model.rooms)
     case UpdateEvent(evt) -> 
         var myid = model.myPosition.pid;
         var code = intToString(evt.code);
@@ -464,11 +505,17 @@ fun updt(msg, model){
       serverPid ! CharacterMoved(model.myPosition.pid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, "Init");
       model
     case IMoved(newPos) ->
-      (myPosition = newPos, othersPositions = model.othersPositions)
+      (state=model.state, myPosition = newPos, othersPositions = model.othersPositions, rooms = model.rooms)
 
     case OtherMoved(pos) ->
       var newPositions = updateOthersPositions(model.othersPositions, [], pos);
-      (myPosition = model.myPosition, othersPositions = newPositions)
+      (state=model.state, myPosition = model.myPosition, othersPositions = newPositions, rooms = model.rooms)
+
+    case StateChange(newState) ->
+      (state=newState, myPosition = model.myPosition, othersPositions = model.othersPositions, rooms = model.rooms)
+
+    case UpdateRoomPids(id, oldroom, newroom) ->
+      (state=model.state, myPosition = model.myPosition, othersPositions = model.othersPositions, rooms = updateRoomPids(id, model.rooms, oldroom, newroom))
 }
 }
 
@@ -483,23 +530,47 @@ fun getOtherHTML(positions, htmlList) {
   switch(positions){
     case [] -> htmlList
     case p::ps -> 
-      var props = MvuHTML.concat(map(textPar,
+      var props = MvuHTML.concat(
       [
-      ("User", p.pid)
-      ]));
+      textNode(p.pid)
+      ]);
       getOtherHTML(ps, htmlList ++ [div(style("position:absolute;top:"^^ floatToString(p.xpos)^^"px; left:"^^ floatToString(p.ypos)^^ "px; width:50px; height: 50px; outline: 2px solid black;"), props )])
+  }
+}
+
+fun getRoomPids(rooms, myroom){
+  switch(rooms) {
+    case [] -> []
+    case p::ps ->
+      textNode(p.name) :: getRoomPids(ps, myroom)
   }
 }
 
 
 sig view : (Model) ~> HTML(Msg)
 fun view(model) {
-    var props = MvuHTML.concat(map(textPar,
-    [
-    ("User", "ME")
-    ]));
-    MvuHTML.concat([div(style("position:absolute; background-image: url(pixilart-drawing.png);"), textNode("")),MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px; width:50px; height: 50px; outline: 2px solid black;"), props)])
+  switch(model.state){
+    case "spatial" ->
+      var body = getNodeById("background");   
+      domSetStyleAttrFromRef(body, "height", "1400px");
+      domSetStyleAttrFromRef(body, "width", "1400px");
+      domSetStyleAttrFromRef(body, "background-image", "url(https://art.pixilart.com/sr2a3bba315969e.png)");
+      domSetStyleAttrFromRef(body, "background-position", "center");
+      domSetStyleAttrFromRef(body, "background-size", "cover");
+      domSetStyleAttrFromRef(body, "top", "0px");
+      domSetStyleAttrFromRef(body, "left", "0px");
+      domSetStyleAttrFromRef(body, "position", "absolute");
+      var props = MvuHTML.concat(
+      [
+      textNode("ME")
+      ]);
+      MvuHTML.concat([div(style("position:absolute; background-image: url(pixilart-drawing.png);"), textNode("")),MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px; width:50px; height: 50px; outline: 2px solid black;"), props)])
     
+    case "stats" ->
+      MvuHTML.concat(getRoomPids(model.rooms, model.myPosition.room))
+    case other ->
+      MvuHTML.concat([])
+  }
     
 }
 
@@ -509,18 +580,9 @@ fun subscriptions(_) {
 }
 
 fun clientStart(){
-  var handler = runHandle("placeholder", (myPosition=(pid="None", xind=startxind, yind=startyind, room="Lobby", xpos=50.0, ypos=50.0), othersPositions=[]), view,
+  var handler = runHandle("placeholder", (state="options", myPosition=(pid="None", xind=startxind, yind=startyind, room="Lobby", xpos=50.0, ypos=50.0), othersPositions=[], rooms=[loungemembers,kitchenmembers,ballroommembers,studymembers,lobbymembers]), view,
       fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
       MvuCommands.empty);
-  var body = getNodeById("background");   
-  domSetStyleAttrFromRef(body, "height", "1400px");
-  domSetStyleAttrFromRef(body, "width", "1400px");
-  domSetStyleAttrFromRef(body, "background-image", "url(https://art.pixilart.com/sr2a3bba315969e.png)");
-  domSetStyleAttrFromRef(body, "background-position", "center");
-  domSetStyleAttrFromRef(body, "background-size", "cover");
-  domSetStyleAttrFromRef(body, "top", "0px");
-  domSetStyleAttrFromRef(body, "left", "0px");
-  domSetStyleAttrFromRef(body, "position", "absolute");
   clientLoop(handler)
 }
 
@@ -535,10 +597,11 @@ fun mainPage(serverPid){
         <div id="background">
         <div id="placeholder">
         </div>
-        <div id="messageDisplay">
+        <div id="localVideoContainer" position="absolute" bottom="0px" right="0px">
+        <input type="button" value="Standard View" l:onclick="{clientPid ! StartRegistration("static")}"/>
+        <input type="button" value="Spatial View" l:onclick="{clientPid ! StartRegistration("spatial")}"/>
         </div>
-        <div id="localVideoContainer">
-        <input type="button" value="load" l:onclick="{clientPid ! StartRegistration()}"/>
+        <div id="remoteVideo">
         </div>
         </div>
       </body>
@@ -549,7 +612,7 @@ fun mainPage(serverPid){
 
 fun main() {
   serverPid ! CreateGrid;
-  print("started");
+  print("started\n");
   addRoute("/", fun(_) {mainPage(serverPid)});
   addStaticRoute("/js", "js", [("js", "text/javascript")]);
   serveWebsockets();
