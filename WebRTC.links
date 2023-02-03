@@ -124,6 +124,31 @@ fun createGrid(height, width, rows, columns){
   }
 }
 
+fun getNewRoomPos(rooms, grid, pid, currxind, curryind, newroom){
+  switch(rooms){
+    case [] -> 
+      var newxind = currxind;
+      var newyind = curryind;
+      var square = selectElem(selectElem(grid, newxind), newyind);
+      var newroom = square.room;
+      var newxpos = square.tpos;
+      var newypos = square.lpos;
+      (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+    case p::ps ->
+      if (p.name == newroom){
+        var newxind = p.xmin;
+        var newyind = p.ymin;
+        var square = selectElem(selectElem(grid, newxind), newyind);
+        var newroom = square.room;
+        var newxpos = square.tpos;
+        var newypos = square.lpos;
+        (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
+      } else{
+        getNewRoomPos(ps, grid, pid, currxind, curryind, newroom)
+      }
+  }
+}
+
 fun getGridPos(grid, pid, currxind, curryind,code){
   switch(code){
         case "Init" ->
@@ -154,8 +179,6 @@ fun getGridPos(grid, pid, currxind, curryind,code){
             (pid = pid, xind = newxind, yind = newyind, room = newroom, xpos = newxpos, ypos = newypos)
           }
           
-            
-  
         case "ArrowUp" ->
           if (currxind == 1){
               var newxind = currxind;
@@ -318,10 +341,13 @@ fun connectionServer(grid, pids, rooms) server {
       pid ! NewIceCandidates(initPid, candidates);
       connectionServer(grid, pids, rooms)
     
-    case CharacterMoved(id, currxind, curryind, currroom, code) ->
-      var newPos = getGridPos(grid, id, currxind, curryind, code);
+    case CharacterMoved(id, currxind, curryind, currroom, code, newroom) ->
+      var newPos = if (code == "ChangeRoom"){
+        getNewRoomPos(rooms, grid, id, currxind, curryind, newroom)
+      } else{
+        getGridPos(grid, id, currxind, curryind, newroom)
+      };
       var pid = getPid(id, pids);
-       
       if (newPos.room <> currroom){
         broadcastPid(pid, id, pids, newPos.room, currroom);
         broadcastCharacterMovement(pids, newPos);
@@ -483,7 +509,7 @@ fun updateOthersPositions(currentArray, newarray, pos){
 }
 
 typename Model = (state: String, myPosition: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float), othersPositions: [(pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float)], rooms: [(name:String, members:[String])]);
-typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | OtherMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | SendPosition | StateChange: String| UpdateRoomPids: (String, String, String)|];
+typename Msg = [|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | OtherMoved: (pid: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float) | SendPosition | StateChange: String| UpdateRoomPids: (String, String, String)| ChangeRoom: (String)|];
 
 sig updt : (Msg, Model) ~> Model
 fun updt(msg, model){
@@ -492,17 +518,18 @@ fun updt(msg, model){
       print("I am "^^mypid);
       (state= model.state, myPosition= (pid=mypid, xind= model.myPosition.xind, yind= model.myPosition.yind, room = model.myPosition.room, xpos=model.myPosition.xpos, ypos=model.myPosition.ypos), othersPositions= model.othersPositions, rooms=model.rooms)
     case UpdateEvent(evt) -> 
+        
         var myid = model.myPosition.pid;
         var code = intToString(evt.code);
-        if (code == "ArrowDown" || code == "ArrowUp" || code == "ArrowLeft" || code == "ArrowRight"){
-          serverPid ! CharacterMoved(myid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, code);
+        if (model.state == "spatial" && (code == "ArrowDown" || code == "ArrowUp" || code == "ArrowLeft" || code == "ArrowRight" || code == "RoomChange")){
+          serverPid ! CharacterMoved(myid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, code, "None");
           model
         }else{
           model
         }
 
     case SendPosition() ->
-      serverPid ! CharacterMoved(model.myPosition.pid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, "Init");
+      serverPid ! CharacterMoved(model.myPosition.pid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, "Init", "None");
       model
     case IMoved(newPos) ->
       (state=model.state, myPosition = newPos, othersPositions = model.othersPositions, rooms = model.rooms)
@@ -516,6 +543,11 @@ fun updt(msg, model){
 
     case UpdateRoomPids(id, oldroom, newroom) ->
       (state=model.state, myPosition = model.myPosition, othersPositions = model.othersPositions, rooms = updateRoomPids(id, model.rooms, oldroom, newroom))
+
+    case ChangeRoom(newroom) ->
+      var myid = model.myPosition.pid;
+      serverPid ! CharacterMoved(myid, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, "ChangeRoom", newroom);
+      model
 }
 }
 
@@ -542,9 +574,11 @@ fun getRoomPids(rooms, myroom){
   switch(rooms) {
     case [] -> []
     case p::ps ->
-      textNode(p.name) :: getRoomPids(ps, myroom)
+      input(MvuAttrs.concat([onClick(fun() { ChangeRoom(p.name) }),type("button"), value(p.name)]), textNode("hello")) :: getRoomPids(ps, myroom)
   }
 }
+
+
 
 
 sig view : (Model) ~> HTML(Msg)
@@ -566,7 +600,7 @@ fun view(model) {
       ]);
       MvuHTML.concat([div(style("position:absolute; background-image: url(pixilart-drawing.png);"), textNode("")),MvuHTML.concat(getOtherHTML(model.othersPositions, [])), div(style("position:absolute;top:"^^ floatToString(model.myPosition.xpos)^^"px; left:"^^ floatToString(model.myPosition.ypos)^^ "px; width:50px; height: 50px; outline: 2px solid black;"), props)])
     
-    case "stats" ->
+    case "static" ->
       MvuHTML.concat(getRoomPids(model.rooms, model.myPosition.room))
     case other ->
       MvuHTML.concat([])
