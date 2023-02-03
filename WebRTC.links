@@ -345,7 +345,7 @@ fun connectionServer(grid, pids, rooms) server {
       var newPos = if (code == "ChangeRoom"){
         getNewRoomPos(rooms, grid, id, currxind, curryind, newroom)
       } else{
-        getGridPos(grid, id, currxind, curryind, newroom)
+        getGridPos(grid, id, currxind, curryind, code)
       };
       var pid = getPid(id, pids);
       if (newPos.room <> currroom){
