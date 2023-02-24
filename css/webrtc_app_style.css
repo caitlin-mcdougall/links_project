@@ -1,0 +1,33 @@
+#firstPageContainer{
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: fit-content;
+    height: fit-content;
+    transform: translate(-50%, -50%);
+    
+}
+
+.optionButton{
+    height: 50px;
+}
+
+.centeredInParentDiv{
+    width: fit-content;
+    margin: 3px auto;
+}
+
+#nameInput{
+    height: 30px;
+}
+
+.radioGrid{
+    display: grid;
+    align-items: center;
+    grid-template-columns: 30px 60px;
+    justify-content: space-evenly;
+}
+
+.currentRoomButton{
+    background-color:aquamarine;
+}

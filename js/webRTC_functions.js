@@ -9,6 +9,7 @@ var peerConnectionConfig = {
 peerConnections = {}
 
 var videoStream = false;
+var localVideo = new MediaStream();
 
 function _getLocalVideo(){
     var video = document.getElementById("localVideo")
@@ -24,8 +25,10 @@ function _getLocalVideo(){
     /* Stream it to video element */
     navigator.mediaDevices.getUserMedia(constraints).then(function success(stream) {
       localStream = new MediaStream()
-      localStream.addTrack(stream.getVideoTracks()[0])
-      console.log(stream.getVideoTracks())
+      videoTrack = stream.getVideoTracks()[0]
+      localStream.addTrack(videoTrack)
+      localVideo.addTrack(videoTrack)
+      localVideo.addTrack(stream.getAudioTracks()[0])
       video.srcObject = localStream;
       console.log("should be streaming");
       videoStream = true;
@@ -44,14 +47,16 @@ function _setupRTCConnection(pid){
     connection.onicecandidate = event => newIceCandidate(event, pid);
     connection.ontrack = event => newRemoteTrack(event, pid);
     // getLocalVideo();
-    var localvideo = document.getElementById("localVideo");
-    console.log(localvideo.srcObject)
-    connection.addStream(localvideo.srcObject);
+    // var localvideo = document.getElementById("localVideo");
+    // console.log(localvideo.srcObject)
+    connection.addStream(localVideo);
     peerConn = {
         connection: connection,
         iceCandidates: [],
         isNewIceCandidate: false,
         remoteElement: null,
+        hasRemoteAudio: false,
+        hasRemoteVideo: false,
     };
     console.log("setting up rtc connection")
     console.log(pid)
@@ -96,11 +101,18 @@ function newRemoteTrack(event, pid){
     if(!event){
         return null
     }
+    if(event.track.kind == "video"){
+        console.log("TRACK VIDEO")
+        peerConnections[pid._clientPid].hasRemoteVideo = true
+    }
     else{
+        console.log("TRACK AUDIO")
+        peerConnections[pid._clientPid].hasRemoteAudio = true
+    }
+
+    if(peerConnections[pid._clientPid].hasRemoteAudio && peerConnections[pid._clientPid].hasRemoteVideo){
         // console.log("event = ", event);
         remotevideo = document.getElementById("remoteVideo");
-        remoteStream = new MediaStream();
-        remoteStream.addTrack(event.track);
         // console.log(remoteStream)
         newVid = document.createElement("video")
         newVid.setAttribute('object-fit', 'cover');
@@ -110,7 +122,6 @@ function newRemoteTrack(event, pid){
         newVid.srcObject = event.streams[0];
         peerConnections[pid._clientPid].remoteElement = newVid;
         remoteVideo.appendChild(newVid);
-        console.log(event.streams);
     }
     return
 }
