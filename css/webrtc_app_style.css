@@ -31,3 +31,17 @@
 .currentRoomButton{
     background-color:aquamarine;
 }
+
+.hidden{
+    display: none;
+}
+
+#localVideoContainer{
+    right: 0px;
+    bottom: 0px;
+    position: fixed;
+}
+
+video{
+    opacity: 0.8;
+}

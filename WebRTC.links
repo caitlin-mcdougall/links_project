@@ -36,7 +36,7 @@ var lounge = (name="Lounge", xmin=1, xmax=9, ymin=1, ymax=11, members=[]);
 var kitchen = (name="Kitchen", xmin=1, xmax=7, ymin=18, ymax=27, members=[]);
 var study = (name="Study", xmin=12, xmax=23, ymin=20, ymax=27, members=[]);
 var ballroom = (name="Ballroom", xmin=14, xmax=26, ymin=1, ymax=15, members=[]);
-var lobby = (name="Lobby", xmin=10, xmax=11, ymin=16, ymax=17, members=[]);
+var lobby = (name="Lobby", xmin=1, xmax=rows, ymin=1, ymax=columns, members=[]);
 
 var loungemembers = (name="Lounge", members=[]);
 var kitchenmembers = (name="Kitchen", members=[]);
@@ -125,24 +125,24 @@ fun createGrid(height, width, rows, columns){
   }
 }
 
-fun checkAllCoordsOccupation(grid, coords, maxOccupancy){
+fun checkAllCoordsOccupation(grid, room, coords, maxOccupancy){
   switch(coords){
     case [] -> []
     case p::ps ->
       var square = selectElem(selectElem(grid, first(p)), second(p));
-      if(square.numOccupants <= maxOccupancy){
+      if(square.room == room && square.numOccupants <= maxOccupancy){
         [(xind=first(p), yind=second(p), square=square)]
       }
       else{
-        checkAllCoordsOccupation(grid, ps, maxOccupancy)
+        checkAllCoordsOccupation(grid, room, ps, maxOccupancy)
       }
   }
 }
 
-fun findLeastOccupiedSquare(grid, coords, maxOccupancy){
-  var square = checkAllCoordsOccupation(grid, coords, maxOccupancy);
+fun findLeastOccupiedSquare(grid, room, coords, maxOccupancy){
+  var square = checkAllCoordsOccupation(grid, room, coords, maxOccupancy);
   if(length(square) == 0){
-    findLeastOccupiedSquare(grid, coords, maxOccupancy+1)
+    findLeastOccupiedSquare(grid, room, coords, maxOccupancy+1)
   }
   else{
     hd(square)
@@ -164,7 +164,7 @@ fun getNewRoomPos(rooms, grid, pid, name, currxind, curryind, newroom, icon){
     case p::ps ->
       if (p.name == newroom){
         var coords = for(a <- [p.xmin..p.xmax], b <- [p.ymin..p.ymax]) [(a,b)];
-        var leastOccupiedSquare = findLeastOccupiedSquare(grid, coords, 0);
+        var leastOccupiedSquare = findLeastOccupiedSquare(grid, newroom, coords, 0);
         var newxind = leastOccupiedSquare.xind;
         var newyind = leastOccupiedSquare.yind;
         var square = leastOccupiedSquare.square;
@@ -181,9 +181,11 @@ fun getNewRoomPos(rooms, grid, pid, name, currxind, curryind, newroom, icon){
 fun getGridPos(grid, pid, name, currxind, curryind, code, icon){
   switch(code){
         case "Init" ->
-          var newxind = currxind;
-          var newyind = curryind;
-          var square = selectElem(selectElem(grid, newxind), newyind);
+          var coords = for(a <- [lobby.xmin..lobby.xmax], b <- [lobby.ymin..lobby.ymax]) [(a,b)];
+          var leastOccupiedSquare = findLeastOccupiedSquare(grid, "Lobby", coords, 0);
+          var newxind = leastOccupiedSquare.xind;
+          var newyind = leastOccupiedSquare.yind;
+          var square = leastOccupiedSquare.square;
           var newroom = square.room;
           var newxpos = square.tpos;
           var newypos = square.lpos;
@@ -572,6 +574,7 @@ fun updt(msg, model){
   switch(msg) {
 
     case EnterView(newState) ->
+      print("entering");
       domReplaceChildren(
           <#>
           <video id="localVideo" width="320" height="240" autoplay="true">
@@ -599,7 +602,7 @@ fun updt(msg, model){
 
     case SendPosition() ->
       print("Send Position");
-      serverPid ! CharacterMoved(model.myPosition.pid, model.myPosition.name, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, "Init", "None", model.myPosition.icon);
+      serverPid ! CharacterMoved(model.myPosition.pid, model.myPosition.name, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, "None", "None", model.myPosition.icon);
       model
     case IMoved(newPos) ->
       (model with myPosition = newPos)
@@ -656,10 +659,14 @@ fun getCharacterHTML(characterInformation){
             ),
           div(
             style(
-              "width:50px;
-              height:20px;
-              margin-top:2px;
-              text-align:center;"
+              "
+              position: absolute;
+              margin: 5px auto;
+              text-align:center;
+              background: rgba(199, 208, 218, .8);
+              padding:2px;
+              left: 50%;
+              transform: translate(-50%, 0);"
             ),
             textNode(characterInformation.name)
           )
@@ -723,7 +730,11 @@ fun getNameEntryInput(){
 }
 
 fun getOptionButtonHTML(option){
-  input(MvuAttrs.concat([type("submit"), class("optionButton"), value(""^^ option ^^ "View"), onClick( fun() {EnterView(option)})]), MvuHTML.empty)
+  input(MvuAttrs.concat([type("submit"), class("optionButton"), value(""^^ option ^^ " View"), onClick( fun() {EnterView(option)})]), MvuHTML.empty)
+}
+
+fun getSwitchViewButton(option){
+  input(MvuAttrs.concat([type("submit"), class("optionButton"), value("Switch to "^^ option ^^ " View"), onClick( fun() {StateChange(option)})]), MvuHTML.empty)
 }
 
 
@@ -731,25 +742,22 @@ sig view : (Model) ~> HTML(Msg)
 fun view(model) {
   switch(model.state){
     case "Spatial" ->
-      var body = getNodeById("background");   
-      domSetStyleAttrFromRef(body, "height", "1400px");
-      domSetStyleAttrFromRef(body, "width", "1400px");
-      domSetStyleAttrFromRef(body, "background-image", "url(images/background_rooms.png)");
-      domSetStyleAttrFromRef(body, "background-position", "center");
-      domSetStyleAttrFromRef(body, "background-size", "cover");
-      domSetStyleAttrFromRef(body, "top", "0px");
-      domSetStyleAttrFromRef(body, "left", "0px");
-      domSetStyleAttrFromRef(body, "position", "absolute");
       var myHTML = getCharacterHTML(model.myPosition);
-      MvuHTML.concat([MvuHTML.concat(getOtherHTML(model.othersPositions, [])), myHTML])
+      var localVideoHTML = div(MvuAttrs.concat([id("localVideoContainer"), style("position: fixed; right:0px; bottom:0px;")]), MvuHTML.empty);
+      var remoteVideoHTML = div(MvuAttrs.concat([id("remoteVideo")]), MvuHTML.empty);
+      div(MvuAttrs.concat([id("background"), style("background-image: url(images/background_rooms.png); z-index: -1; height: 1400px; width: 1400px; background-position: center; background-size: cover; top: 0px; left: 0px; position: absolute;")]), MvuHTML.concat([ getSwitchViewButton("Static"), MvuHTML.concat(getOtherHTML(model.othersPositions, [])), myHTML]))
     
     case "Static" ->
-      div(class("roomSelectionButtonsContainer"), MvuHTML.concat(getRoomPids(model.rooms, model.myPosition.room)))
+      var localVideoHTML = div(MvuAttrs.concat([id("localVideoContainer"), style("position: fixed; right:0px; bottom:0px;")]), MvuHTML.empty);
+      var remoteVideoHTML = div(MvuAttrs.concat([id("remoteVideo"), class("hidden")]), MvuHTML.empty);
+      MvuHTML.concat([getSwitchViewButton("Spatial"), div(class("roomSelectionButtonsContainer"), MvuHTML.concat(getRoomPids(model.rooms, model.myPosition.room)))])
     case "Options" ->
       var imageSelection = getImageSelectionHTML();
       var nameEntryContainer = div(MvuAttrs.concat([id("nameEntryContainer"),class("centeredInParentDiv")]),getNameEntryInput());
       var staticOptionButton = getOptionButtonHTML("Static");
       var spatialOptionButton = getOptionButtonHTML("Spatial");
+      var localVideoHTML = div(MvuAttrs.concat([id("localVideoContainer"), class("hidden")]), MvuHTML.empty);
+      var remoteVideoHTML = div(MvuAttrs.concat([id("remoteVideo"), class("hidden")]), MvuHTML.empty);
       div(MvuAttrs.concat([id("firstPageContainer")]), MvuHTML.concat([imageSelection, nameEntryContainer,staticOptionButton, spatialOptionButton]))
     case other ->
       MvuHTML.empty
@@ -779,15 +787,10 @@ fun mainPage(){
         <link rel="stylesheet" type="text/css" href="css/webrtc_app_style.css" />
       </head>
       <body>
-        <div id="background">
         <div id="placeholder">
         </div>
-        <div id="localVideoContainer" style="position: fixed; right:0px; bottom:0px;">
-        <div></div>
-        </div>
-        <div id="remoteVideo">
-        </div>
-        </div>
+        <div id="localVideoContainer"></div>
+        <div id="remoteVideo"></div>
       </body>
     </html>
 
