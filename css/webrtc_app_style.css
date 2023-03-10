@@ -36,12 +36,40 @@
     display: none;
 }
 
-#localVideoContainer{
+/* #localVideoContainer{
     right: 0px;
-    bottom: 0px;
+    top: 0px;
     position: fixed;
+} */
+
+.spatial{
+    right: 1vmin;
+    top: 1vmin;
+    position: fixed;
+    height: 99vh;
+    overflow: hidden;
 }
 
 video{
     opacity: 0.8;
+}
+
+/* #remoteVideo{
+    width: fit-content;
+    height: calc(100vh - 240px);
+    overflow-y: auto;
+    display: grid;
+} */
+
+.spatial #remoteVideo{
+    width: fit-content;
+    max-height: calc(100% - 240px);
+    overflow-y: auto;
+    display: grid;
+}
+
+.switchViewButton{
+    left: 10px;
+    position: absolute;
+    font-weight: bold;
 }

@@ -50,7 +50,6 @@ fun broadcastPid(pid, id, name, currentPids, newroom, oldroom) server {
     case [] -> ()
     case p::ps ->
       var proc = first(p);
-      proc ! UpdateRooms(id, name, oldroom, newroom);
       if (second(p) == id){
         broadcastPid(pid, id, name, ps, newroom, oldroom)
       }
@@ -81,21 +80,24 @@ fun broadcastPid(pid, id, name, currentPids, newroom, oldroom) server {
   }
 }
 
-fun broadcastCharacterMovement(pids, pos) server {
+fun broadcastCharacterMovement(pids, pos, id, name, oldroom, newroom) server {
   switch(pids){
     case [] -> 
       ()
     case p::ps ->
       var proc = first(p);
+      proc ! UpdateRooms(id, name, oldroom, newroom);
       if(second(p) == pos.pid){
         proc ! Move(pos);
-        broadcastCharacterMovement(ps, pos)
+        broadcastCharacterMovement(ps, pos, id, name, oldroom, newroom)
       }else{
         proc ! OtherMoved(pos);
-        broadcastCharacterMovement(ps, pos)
+        broadcastCharacterMovement(ps, pos, id, name, oldroom, newroom)
       }  
   }
 }
+
+
 
 fun createRow(height, width, row, columns){
   for (c <- columns){
@@ -371,6 +373,26 @@ fun updateRoomPids(id, name, rooms, oldroom, newroom){
 
 }
 
+fun broadcastCharacterPosition(pids, pos, id, name, currroom){
+    switch(pids){
+    case [] -> 
+      ()
+    case p::ps ->
+      var proc = first(p);
+      if(second(p) == pos.pid){
+        proc ! Move(pos);
+        broadcastCharacterPosition(ps, pos, id, name, currroom)
+      }else{
+        proc ! UpdateRooms(id, name, "None", currroom);
+        proc ! OtherMoved(pos);
+        broadcastCharacterPosition(ps, pos, id, name, currroom)
+      }  
+  }
+}
+
+
+
+
 # Runs on the server, distributes PID list
 fun connectionServer(grid, pids, rooms) server {
   receive {
@@ -391,7 +413,7 @@ fun connectionServer(grid, pids, rooms) server {
       var newGrid = updateGridSquareOccupants(grid, -1, -1, newPos.xind, newPos.yind, 0);
       var newpids = updatePidRooms(id, pids, newPos.room);
       broadcastPid(newPid, id, name, pids, newPos.room, "None");
-      broadcastCharacterMovement(pids, newPos);
+      broadcastCharacterMovement(pids, newPos, id, name, "None", newPos.room);
       # newPid ! SetMyId(id);
       connectionServer(newGrid, newpids, rooms)
 
@@ -407,6 +429,13 @@ fun connectionServer(grid, pids, rooms) server {
     case SendIceCandidates(initPid, pid, candidates) ->
       pid ! NewIceCandidates(initPid, candidates);
       connectionServer(grid, pids, rooms)
+
+    case SendResponse(id, name, currxind, curryind, currroom, icon) ->
+      var currPos = getGridPos(grid, id, name, currxind, curryind, "None", icon);
+      var pid = getPid(id, pids);
+      broadcastCharacterPosition(pids, currPos, id, name, currroom);
+      connectionServer(grid, pids, rooms)
+
     
     case CharacterMoved(id, name, currxind, curryind, currroom, code, newroom, icon) ->
       var newPos = if (code == "ChangeRoom"){
@@ -423,12 +452,12 @@ fun connectionServer(grid, pids, rooms) server {
       var pid = getPid(id, pids);
       if (newPos.room <> currroom){
         broadcastPid(pid, id, name, pids, newPos.room, currroom);
-        broadcastCharacterMovement(pids, newPos);
+        broadcastCharacterMovement(pids, newPos, id, name, currroom, newPos.room);
         var newpids = updatePidRooms(id, pids, newPos.room);
         # var newrooms = updateRoomPids(id, rooms, currroom, newPos.room);
         connectionServer(newGrid, newpids, rooms)
       }else{
-        broadcastCharacterMovement(pids, newPos);
+        broadcastCharacterMovement(pids, newPos, id, name, currroom, newPos.room);
         connectionServer(newGrid, pids, rooms)
       }
   }
@@ -479,7 +508,7 @@ fun clientLoop(handler) client {
   receive {
 
     case SetMyId(id) ->
-      dispatch(SetPid(id), handler);
+      dispatch(SetId(id), handler);
       clientLoop(handler)
 
     case RequestPosition(pid) ->
@@ -567,7 +596,7 @@ fun updateOthersPositions(currentArray, newarray, pos){
 }
 
 typename Model = (state: String, myPosition: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon: String), othersPositions: [(pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon: String)], rooms: [(name:String, members:[(id:String, name:String)])]);
-typename Msg = [|EnterView: (String)|SetPid: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon:String) | OtherMoved: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon:String) | SendPosition | StateChange: String| UpdateRoomPids: (String, String, String, String)| ChangeRoom: (String)| SetIcon: (String)| SetName: (String)|];
+typename Msg = [|EnterView: (String)|SetId: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon:String) | OtherMoved: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon:String) | SendPosition | StateChange: String| UpdateRoomPids: (String, String, String, String)| ChangeRoom: (String)| SetIcon: (String)| SetName: (String)|];
 
 sig updt : (Msg, Model) ~> Model
 fun updt(msg, model){
@@ -587,7 +616,7 @@ fun updt(msg, model){
       serverPid ! RegisterInitialClientPosition(model.myPosition.pid, model.myPosition.name, model.myPosition.icon);
       (model with state=newState)
       
-    case SetPid(mypid) ->
+    case SetId(mypid) ->
       print("I am "^^mypid);
       (model with myPosition = (model.myPosition with pid = mypid))
     case UpdateEvent(evt) -> 
@@ -602,7 +631,7 @@ fun updt(msg, model){
 
     case SendPosition() ->
       print("Send Position");
-      serverPid ! CharacterMoved(model.myPosition.pid, model.myPosition.name, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, "None", "None", model.myPosition.icon);
+      serverPid ! SendResponse(model.myPosition.pid, model.myPosition.name, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, model.myPosition.icon);
       model
     case IMoved(newPos) ->
       (model with myPosition = newPos)
@@ -734,7 +763,7 @@ fun getOptionButtonHTML(option){
 }
 
 fun getSwitchViewButton(option){
-  input(MvuAttrs.concat([type("submit"), class("optionButton"), value("Switch to "^^ option ^^ " View"), onClick( fun() {StateChange(option)})]), MvuHTML.empty)
+  input(MvuAttrs.concat([type("submit"), class("switchViewButton"), value("Switch to "^^ option ^^ " View"), onClick( fun() {StateChange(option)})]), MvuHTML.empty)
 }
 
 
@@ -742,16 +771,22 @@ sig view : (Model) ~> HTML(Msg)
 fun view(model) {
   switch(model.state){
     case "Spatial" ->
+      var body = getNodeById("videoContainer");   
+      domSetPropertyFromRef(body, "className", "spatial");
       var myHTML = getCharacterHTML(model.myPosition);
       var localVideoHTML = div(MvuAttrs.concat([id("localVideoContainer"), style("position: fixed; right:0px; bottom:0px;")]), MvuHTML.empty);
       var remoteVideoHTML = div(MvuAttrs.concat([id("remoteVideo")]), MvuHTML.empty);
       div(MvuAttrs.concat([id("background"), style("background-image: url(images/background_rooms.png); z-index: -1; height: 1400px; width: 1400px; background-position: center; background-size: cover; top: 0px; left: 0px; position: absolute;")]), MvuHTML.concat([ getSwitchViewButton("Static"), MvuHTML.concat(getOtherHTML(model.othersPositions, [])), myHTML]))
     
     case "Static" ->
+      var body = getNodeById("videoContainer");   
+      domSetPropertyFromRef(body, "className", "static");
       var localVideoHTML = div(MvuAttrs.concat([id("localVideoContainer"), style("position: fixed; right:0px; bottom:0px;")]), MvuHTML.empty);
       var remoteVideoHTML = div(MvuAttrs.concat([id("remoteVideo"), class("hidden")]), MvuHTML.empty);
       MvuHTML.concat([getSwitchViewButton("Spatial"), div(class("roomSelectionButtonsContainer"), MvuHTML.concat(getRoomPids(model.rooms, model.myPosition.room)))])
     case "Options" ->
+      var body = getNodeById("videoContainer");   
+      domSetPropertyFromRef(body, "className", "");
       var imageSelection = getImageSelectionHTML();
       var nameEntryContainer = div(MvuAttrs.concat([id("nameEntryContainer"),class("centeredInParentDiv")]),getNameEntryInput());
       var staticOptionButton = getOptionButtonHTML("Static");
@@ -770,7 +805,7 @@ fun subscriptions(_) {
   onKeyDown(fun(evt) { UpdateEvent(evt) })
 }
 
-fun clientStart(){
+fun clientStart() {
   var handler = runHandle("placeholder", (state="Options", myPosition=(pid="None", name="Nameless", xind=startxind, yind=startyind, room="Lobby", xpos=50.0, ypos=50.0, icon="none"), othersPositions=[], rooms=[loungemembers,kitchenmembers,ballroommembers,studymembers,lobbymembers]), view,
       fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
       MvuCommands.empty);
@@ -789,8 +824,10 @@ fun mainPage(){
       <body>
         <div id="placeholder">
         </div>
+        <div id="videoContainer">
         <div id="localVideoContainer"></div>
         <div id="remoteVideo"></div>
+        </div>
       </body>
     </html>
 
