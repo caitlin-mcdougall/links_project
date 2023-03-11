@@ -116,8 +116,6 @@ function newRemoteTrack(event, pid){
         // console.log(remoteStream)
         newVid = document.createElement("video")
         newVid.setAttribute('object-fit', 'cover');
-        newVid.setAttribute('width', '320px');
-        newVid.setAttribute('height', '240px');
         newVid.setAttribute("autoplay", "true")
         newVid.srcObject = event.streams[0];
         peerConnections[pid._clientPid].remoteElement = newVid;

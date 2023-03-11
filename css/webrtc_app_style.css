@@ -1,3 +1,7 @@
+body{
+    margin: 0px;
+}
+
 #firstPageContainer{
     position: absolute;
     top: 50%;
@@ -29,7 +33,7 @@
 }
 
 .currentRoomButton{
-    background-color:aquamarine;
+    background-color:cornflowerblue;;
 }
 
 .hidden{
@@ -51,7 +55,7 @@
 }
 
 video{
-    opacity: 0.8;
+    object-fit: cover;
 }
 
 /* #remoteVideo{
@@ -68,8 +72,86 @@ video{
     display: grid;
 }
 
+.spatial video{
+    opacity: 0.8;
+}
+.spatial #remoteVideo video{
+    width: 320px;
+    height: 240px;
+}
+
+.static{
+    position: fixed;
+    left: 400px;
+    top: 0px;
+    height: 100vh;
+    width: calc(100vw - 400px);
+}
+
+.static #localVideoContainer{
+    background-color: lightsteelblue;
+} 
+
+.static #remoteVideo{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+}
+
+.static #remoteVideo video{
+    width: -webkit-fill-available;
+    max-height: calc(100vh - 240px);
+}
+
+.static #localVideoContainer #localVideo{
+    margin-left: auto;
+    margin-right: auto;
+    /* align-items: center; */
+    /* align-content: center; */
+    display: block;
+}
+
+
 .switchViewButton{
     left: 10px;
     position: absolute;
     font-weight: bold;
+}
+
+.roomSelectionButtonsContainer{
+    display: grid;
+    width: 400px;
+    height: 100vh;
+    align-content: space-around;
+    background-color: darkseagreen;
+    justify-content: center;
+
+}
+
+.roomButton{
+    width: 200px;
+    height: 100px;
+    display: grid;
+    grid-template-columns: 89px 1px 90px;
+    justify-content: center;
+    align-content: center;
+    align-items: center;
+    padding: 8px;
+    border-radius: 5px;
+}
+
+#roomMembersSeparator{
+    border-style: hidden solid hidden hidden;
+    height: inherit;
+}
+
+.roomName{
+    text-align: left;
+    font-size: 20px;
+    font-family: cursive;
+}
+
+.roomMembersContainer{
+    display: grid;
+    font-size: 15px;
+    overflow-y: clip;
 }

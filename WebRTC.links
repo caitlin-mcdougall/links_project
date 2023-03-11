@@ -55,7 +55,7 @@ fun broadcastPid(pid, id, name, currentPids, newroom, oldroom) server {
       }
       else{
         if (oldroom == "None"){
-          proc ! RequestPosition(pid)
+          proc ! RequestPosition(id)
         }
         else {
 
@@ -373,26 +373,6 @@ fun updateRoomPids(id, name, rooms, oldroom, newroom){
 
 }
 
-fun broadcastCharacterPosition(pids, pos, id, name, currroom){
-    switch(pids){
-    case [] -> 
-      ()
-    case p::ps ->
-      var proc = first(p);
-      if(second(p) == pos.pid){
-        proc ! Move(pos);
-        broadcastCharacterPosition(ps, pos, id, name, currroom)
-      }else{
-        proc ! UpdateRooms(id, name, "None", currroom);
-        proc ! OtherMoved(pos);
-        broadcastCharacterPosition(ps, pos, id, name, currroom)
-      }  
-  }
-}
-
-
-
-
 # Runs on the server, distributes PID list
 fun connectionServer(grid, pids, rooms) server {
   receive {
@@ -430,10 +410,11 @@ fun connectionServer(grid, pids, rooms) server {
       pid ! NewIceCandidates(initPid, candidates);
       connectionServer(grid, pids, rooms)
 
-    case SendResponse(id, name, currxind, curryind, currroom, icon) ->
+    case SendResponse(toId, id, name, currxind, curryind, currroom, icon) ->
       var currPos = getGridPos(grid, id, name, currxind, curryind, "None", icon);
-      var pid = getPid(id, pids);
-      broadcastCharacterPosition(pids, currPos, id, name, currroom);
+      var pid = getPid(toId, pids);
+      pid ! UpdateRooms(id, name, "None", currroom);
+      pid ! OtherMoved(currPos);
       connectionServer(grid, pids, rooms)
 
     
@@ -511,8 +492,8 @@ fun clientLoop(handler) client {
       dispatch(SetId(id), handler);
       clientLoop(handler)
 
-    case RequestPosition(pid) ->
-      dispatch(SendPosition(), handler);
+    case RequestPosition(id) ->
+      dispatch(SendPosition(id), handler);
       clientLoop(handler)
 
     case OpenConnection(withPid) ->
@@ -596,7 +577,7 @@ fun updateOthersPositions(currentArray, newarray, pos){
 }
 
 typename Model = (state: String, myPosition: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon: String), othersPositions: [(pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon: String)], rooms: [(name:String, members:[(id:String, name:String)])]);
-typename Msg = [|EnterView: (String)|SetId: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon:String) | OtherMoved: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon:String) | SendPosition | StateChange: String| UpdateRoomPids: (String, String, String, String)| ChangeRoom: (String)| SetIcon: (String)| SetName: (String)|];
+typename Msg = [|EnterView: (String)|SetId: String | UpdateEvent: KeyboardEvent | IMoved: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon:String) | OtherMoved: (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon:String) | SendPosition: String | StateChange: String| UpdateRoomPids: (String, String, String, String)| ChangeRoom: (String)| SetIcon: (String)| SetName: (String)|];
 
 sig updt : (Msg, Model) ~> Model
 fun updt(msg, model){
@@ -629,9 +610,9 @@ fun updt(msg, model){
           model
         }
 
-    case SendPosition() ->
+    case SendPosition(id) ->
       print("Send Position");
-      serverPid ! SendResponse(model.myPosition.pid, model.myPosition.name, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, model.myPosition.icon);
+      serverPid ! SendResponse(id, model.myPosition.pid, model.myPosition.name, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, model.myPosition.icon);
       model
     case IMoved(newPos) ->
       (model with myPosition = newPos)
@@ -719,23 +700,23 @@ fun getRoomMembersHTML(members){
   switch(members){
     case [] -> []
     case q::qs ->
-      textNode(q.name) :: getRoomMembersHTML(qs)
+      div(class("roomMember"), textNode(q.name)) :: getRoomMembersHTML(qs)
   }
 }
 
-fun getRoomPids(rooms, myroom){
+fun getRoomPidsHTML(rooms, myroom){
   switch(rooms) {
     case [] -> []
     case p::ps ->
       var roomNameHTML = div(class("roomName"), textNode(p.name));
       var roomMembersHTML = div(class("roomMembersContainer"),MvuHTML.concat(getRoomMembersHTML(p.members)));
       var attributes = if(p.name == myroom){
-        MvuAttrs.concat([class("currentRoomButton"),onClick(fun() { ChangeRoom(p.name) })])
+        MvuAttrs.concat([class("roomButton currentRoomButton"),onClick(fun() { ChangeRoom(p.name) })])
       }
       else{
-        MvuAttrs.concat([onClick(fun() { ChangeRoom(p.name) })])
+        MvuAttrs.concat([class("roomButton"), onClick(fun() { ChangeRoom(p.name) })])
       };
-      button(attributes, MvuHTML.concat([roomNameHTML, roomMembersHTML])) :: getRoomPids(ps, myroom)
+      button(attributes, MvuHTML.concat([roomNameHTML, div(id("roomMembersSeparator"), MvuHTML.empty), roomMembersHTML])) :: getRoomPidsHTML(ps, myroom)
   }
 }
 
@@ -774,16 +755,13 @@ fun view(model) {
       var body = getNodeById("videoContainer");   
       domSetPropertyFromRef(body, "className", "spatial");
       var myHTML = getCharacterHTML(model.myPosition);
-      var localVideoHTML = div(MvuAttrs.concat([id("localVideoContainer"), style("position: fixed; right:0px; bottom:0px;")]), MvuHTML.empty);
-      var remoteVideoHTML = div(MvuAttrs.concat([id("remoteVideo")]), MvuHTML.empty);
       div(MvuAttrs.concat([id("background"), style("background-image: url(images/background_rooms.png); z-index: -1; height: 1400px; width: 1400px; background-position: center; background-size: cover; top: 0px; left: 0px; position: absolute;")]), MvuHTML.concat([ getSwitchViewButton("Static"), MvuHTML.concat(getOtherHTML(model.othersPositions, [])), myHTML]))
     
     case "Static" ->
       var body = getNodeById("videoContainer");   
       domSetPropertyFromRef(body, "className", "static");
-      var localVideoHTML = div(MvuAttrs.concat([id("localVideoContainer"), style("position: fixed; right:0px; bottom:0px;")]), MvuHTML.empty);
-      var remoteVideoHTML = div(MvuAttrs.concat([id("remoteVideo"), class("hidden")]), MvuHTML.empty);
-      MvuHTML.concat([getSwitchViewButton("Spatial"), div(class("roomSelectionButtonsContainer"), MvuHTML.concat(getRoomPids(model.rooms, model.myPosition.room)))])
+      var rooms = MvuHTML.concat(getRoomPidsHTML(model.rooms, model.myPosition.room));
+      MvuHTML.concat([getSwitchViewButton("Spatial"), div(class("roomSelectionButtonsContainer"), rooms)])
     case "Options" ->
       var body = getNodeById("videoContainer");   
       domSetPropertyFromRef(body, "className", "");
@@ -791,8 +769,6 @@ fun view(model) {
       var nameEntryContainer = div(MvuAttrs.concat([id("nameEntryContainer"),class("centeredInParentDiv")]),getNameEntryInput());
       var staticOptionButton = getOptionButtonHTML("Static");
       var spatialOptionButton = getOptionButtonHTML("Spatial");
-      var localVideoHTML = div(MvuAttrs.concat([id("localVideoContainer"), class("hidden")]), MvuHTML.empty);
-      var remoteVideoHTML = div(MvuAttrs.concat([id("remoteVideo"), class("hidden")]), MvuHTML.empty);
       div(MvuAttrs.concat([id("firstPageContainer")]), MvuHTML.concat([imageSelection, nameEntryContainer,staticOptionButton, spatialOptionButton]))
     case other ->
       MvuHTML.empty
