@@ -8,7 +8,7 @@ var peerConnectionConfig = {
 
 peerConnections = {}
 
-var videoStream = false;
+var hasLocalVideoStream = false;
 var localVideo = new MediaStream();
 
 function _getLocalVideo(){
@@ -31,13 +31,13 @@ function _getLocalVideo(){
       localVideo.addTrack(stream.getAudioTracks()[0])
       video.srcObject = localStream;
       console.log("should be streaming");
-      videoStream = true;
+      hasLocalVideoStream = true;
     });
 
 }
 
 function _isLocalVideo(){
-  return videoStream
+  return hasLocalVideoStream
 }
 
 
@@ -46,9 +46,6 @@ function _setupRTCConnection(pid){
     connection = new RTCPeerConnection(peerConnectionConfig);
     connection.onicecandidate = event => newIceCandidate(event, pid);
     connection.ontrack = event => newRemoteTrack(event, pid);
-    // getLocalVideo();
-    // var localvideo = document.getElementById("localVideo");
-    // console.log(localvideo.srcObject)
     connection.addStream(localVideo);
     peerConn = {
         connection: connection,

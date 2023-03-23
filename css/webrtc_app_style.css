@@ -12,6 +12,17 @@ body{
     
 }
 
+#background{
+    background-image: url(../images/background_rooms.png); 
+    z-index: -1; 
+    height: 1400px; 
+    width: 1400px; 
+    background-position: center; 
+    background-size: cover; 
+    top: 0px; 
+    left: 0px; 
+    position: absolute;
+}
 .optionButton{
     height: 50px;
 }
