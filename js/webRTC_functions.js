@@ -66,7 +66,9 @@ function _closeRTCConnection(pid){
     console.log(Object.keys(peerConnections))
     if (pid._clientPid in peerConnections){
         peerConnections[pid._clientPid].connection.close();
-        peerConnections[pid._clientPid].remoteElement.remove();
+        if (peerConnections[pid._clientPid].remoteElement != null){
+            peerConnections[pid._clientPid].remoteElement.remove();
+        }
         delete peerConnections[pid._clientPid];
     }
 }
