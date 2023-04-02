@@ -47,38 +47,26 @@ var lobbymembers = (name="Lobby", members=[]);
 typename CharacterInformation = (pid: String, name: String, xind: Int, yind: Int, room: String, xpos: Float, ypos: Float, icon: String);
 
 fun manageCalls(pid, id, name, currentPids, oldroom, newroom) server {
-  switch (currentPids) {
-    case [] -> ()
-    case p::ps ->
-      var proc = first(p);
-      if (second(p) == id){
-        manageCalls(pid, id, name, ps, oldroom, newroom)
-      }
-      else{
-        if (third(p) == newroom){
-          
-          proc ! OpenConnection(pid);
-          proc ! StartCall(pid);
-          manageCalls(pid, id, name, ps, oldroom, newroom)
-        }
-        else{
-          if (third(p) == oldroom){
-            proc ! CloseConnection(pid);
-            pid ! CloseConnection(proc);
+    switch (currentPids) {
+        case [] -> ()
+        case p::ps ->
+            var proc = first(p);
+            if (second(p) <> id && third(p) == newroom){
+                proc ! OpenConnection(pid);
+                proc ! StartCall(pid)
+            }
+            else if (second(p) <> id && third(p) == oldroom){
+                proc ! CloseConnection(pid);
+                pid ! CloseConnection(proc)
+            }
+            else{};
             manageCalls(pid, id, name, ps, oldroom, newroom)
-          }else{
-            manageCalls(pid, id, name, ps, oldroom, newroom)
-          }
-        }
-      }
-      
-  }
+    }
 }
 
 fun broadcastCharacterMovement(pids, pos, id, name, oldroom, newroom) server {
   switch(pids){
-    case [] -> 
-      ()
+    case [] -> ()
     case p::ps ->
       var proc = first(p);
       if(second(p) == pos.pid){
@@ -401,7 +389,6 @@ fun connectionServer(grid, pids, rooms) server {
       var currRoom = "None";
       manageCalls(newPid, id, name, pids, currRoom, newPos.room);
       broadcastCharacterMovement(pids, newPos, id, name, currRoom, newPos.room);
-      # newPid ! SetMyId(id);
       connectionServer(newGrid, newpids, rooms)
 
     case SendOffer(pid, initPid, sdp) ->
@@ -446,7 +433,6 @@ fun connectionServer(grid, pids, rooms) server {
         var pid = getPid(id, pids);
         manageCalls(pid, id, name, pids, currroom, newPos.room);
         var newpids = updatePidRooms(id, pids, newPos.room);
-        # var newrooms = updateRoomPids(id, rooms, currroom, newPos.room);
         connectionServer(newGrid, newpids, rooms)
       }else{
         connectionServer(newGrid, pids, rooms)
@@ -567,7 +553,7 @@ fun clientLoop(handler) client {
 }
 }
 
-typename Model = (state: String, myPosition: CharacterInformation, rooms: [(name:String, members:[CharacterInformation])]);
+typename Model = (currentView: String, myPosition: CharacterInformation, rooms: [(name:String, members:[CharacterInformation])]);
 typename Msg = [|EnterView: (String)|SetId: String | MovementEvent: KeyboardEvent | IMoved: CharacterInformation | SendPosition: String | StateChange: String| OtherMoved: (CharacterInformation, String) | ChangeRoom: (String)| SetIcon: (String)| SetName: (String)|];
 
 sig updt : (Msg, Model) ~> Model
@@ -586,14 +572,14 @@ fun updt(msg, model){
       awaitVideoLoop();
       print("finished waiting");
       serverPid ! RegisterInitialClientPosition(model.myPosition.pid, model.myPosition.name, model.myPosition.icon);
-      (model with state=newState)
+      (model with currentView=newState)
       
     case SetId(mypid) ->
       print("I am "^^mypid);
       (model with myPosition = (model.myPosition with pid = mypid))
     case MovementEvent(evt) -> 
         var code = intToString(evt.code);
-        if (model.state == "Spatial" && (code == "ArrowDown" || code == "ArrowUp" || code == "ArrowLeft" || code == "ArrowRight")){
+        if (model.currentView == "Spatial" && (code == "ArrowDown" || code == "ArrowUp" || code == "ArrowLeft" || code == "ArrowRight")){
           var myid = model.myPosition.pid;
           serverPid ! CharacterMoved(myid, model.myPosition.name, model.myPosition.xind, model.myPosition.yind, model.myPosition.room, code, "None", model.myPosition.icon);
           model
@@ -612,7 +598,7 @@ fun updt(msg, model){
         var newRooms = updateCharacterPositions(model.rooms, newpos, oldroom);
         (model with rooms = newRooms)
     case StateChange(newState) ->
-      (model with state = newState)
+      (model with currentView = newState)
 
     case ChangeRoom(newroom) ->
       var myid = model.myPosition.pid;
@@ -742,7 +728,7 @@ fun getSwitchViewButton(option){
 
 sig view : (Model) ~> HTML(Msg)
 fun view(model) {
-  switch(model.state){
+  switch(model.currentView){
     case "Spatial" ->
       var body = getNodeById("videoContainer");   
       domSetPropertyFromRef(body, "className", "spatial");
@@ -777,7 +763,7 @@ fun subscriptions(_) {
 }
 
 fun clientStart() {
-  var handler = runHandle("placeholder", (state="Options", myPosition=(pid="None", name="Nameless", xind=0, yind=0, room="Lobby", xpos=50.0, ypos=50.0, icon="none"), rooms=[loungemembers,kitchenmembers,ballroommembers,studymembers,lobbymembers]), view,
+  var handler = runHandle("placeholder", (currentView="Options", myPosition=(pid="None", name="Nameless", xind=0, yind=0, room="Lobby", xpos=50.0, ypos=50.0, icon="none"), rooms=[loungemembers,kitchenmembers,ballroommembers,studymembers,lobbymembers]), view,
       fun (msg, model) { (updt(msg, model), MvuCommands.empty) }, subscriptions,
       MvuCommands.empty);
   serverPid ! Register(self());
